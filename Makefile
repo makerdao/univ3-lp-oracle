@@ -1,4 +1,7 @@
-all    :; dapp build
+.PHONY: build
+
+all    :  build;
+build  :; ./build.sh
 clean  :; dapp clean
-test   :; dapp test
-deploy :; dapp create Univ3LpOracle
+test   :; ./test.sh $(MATCH)
+deploy :; dapp create GUniLPOracle
