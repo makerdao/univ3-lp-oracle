@@ -151,18 +151,15 @@ contract GUniLPOracleTest is DSTest {
     }
 
     function test_seek_dai() public {
-        uint256 preGas = gasleft();
         daiUsdcLPOracle.poke();
         hevm.warp(now + 1 hours);
         daiUsdcLPOracle.poke();
-        uint256 postGas = gasleft();
-        log_named_uint("dai poke gas", preGas - postGas);
         uint128 lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
         assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
         uint256 lpTokenPrice = uint256(lpTokenPrice128);
         // Price should be the value of all the tokens combined divided by totalSupply()
         (uint256 balDai, uint256 balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 expectedPrice = (balDai + balUsdc * 10e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
+        uint256 expectedPrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
         assertEq(lpTokenPrice, expectedPrice);
     }
 
