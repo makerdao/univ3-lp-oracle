@@ -26,9 +26,10 @@ interface ERC20Like {
 }
 
 interface GUNILike {
-    function token0()                external view returns (address);
-    function token1()                external view returns (address);
-    function getUnderlyingBalances() external view returns (uint256,uint256);
+    function token0()                               external view returns (address);
+    function token1()                               external view returns (address);
+    function getUnderlyingBalances()                external view returns (uint256,uint256);
+    function getUnderlyingBalancesAtPrice(uint160)  external view returns (uint256,uint256);
 }
 
 interface OracleLike {
@@ -112,6 +113,34 @@ contract GUniLPOracle {
     function _mul(uint256 _x, uint256 _y) internal pure returns (uint256 z) {
         require(_y == 0 || (z = _x * _y) / _y == _x, "GUniLPOracle/mul-overflow");
     }
+    function toUint160(uint256 x) internal pure returns (uint160 z) {
+        require((z = uint160(x)) == x, "GUniLPOracle/uint160-overflow");
+    }
+
+    // FROM https://github.com/abdk-consulting/abdk-libraries-solidity/blob/16d7e1dd8628dfa2f88d5dadab731df7ada70bdd/ABDKMath64x64.sol#L687
+    function sqrt (uint256 _x) private pure returns (uint128) {
+        if (_x == 0) return 0;
+        else {
+            uint256 xx = _x;
+            uint256 r = 1;
+            if (xx >= 0x100000000000000000000000000000000) { xx >>= 128; r <<= 64; }
+            if (xx >= 0x10000000000000000) { xx >>= 64; r <<= 32; }
+            if (xx >= 0x100000000) { xx >>= 32; r <<= 16; }
+            if (xx >= 0x10000) { xx >>= 16; r <<= 8; }
+            if (xx >= 0x100) { xx >>= 8; r <<= 4; }
+            if (xx >= 0x10) { xx >>= 4; r <<= 2; }
+            if (xx >= 0x8) { r <<= 1; }
+            r = (r + _x / r) >> 1;
+            r = (r + _x / r) >> 1;
+            r = (r + _x / r) >> 1;
+            r = (r + _x / r) >> 1;
+            r = (r + _x / r) >> 1;
+            r = (r + _x / r) >> 1;
+            r = (r + _x / r) >> 1; // Seven iterations should be enough
+            uint256 r1 = _x / r;
+            return uint128 (r < r1 ? r : r1);
+        }
+    }
 
     // --- Events ---
     event Rely(address indexed usr);
@@ -184,15 +213,16 @@ contract GUniLPOracle {
     }
 
     function seek() internal returns (uint128 quote) {
-        // Get balances of the tokens in the pool
-        (uint256 b0, uint256 b1) = GUNILike(src).getUnderlyingBalances();
-        require(b0 > 0 && b1 > 0, "GUniLPOracle/invalid-balances");
-
         // All Oracle prices are priced with 18 decimals against USD
         uint256 p0 = OracleLike(orb0).read();  // Query token0 price from oracle (WAD)
         require(p0 != 0, "GUniLPOracle/invalid-oracle-0-price");
         uint256 p1 = OracleLike(orb1).read();  // Query token1 price from oracle (WAD)
         require(p1 != 0, "GUniLPOracle/invalid-oracle-1-price");
+        uint160 sqrtPriceX96 = toUint160(_mul(sqrt(_mul(p1, (1 << 64)) / p0), (1 << 32)));
+
+        // Get balances of the tokens in the pool
+        (uint256 b0, uint256 b1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
+        require(b0 > 0 && b1 > 0, "GUniLPOracle/invalid-balances");
 
         // Add the total value of each token together and divide by the totalSupply to get the unit price
         uint256 preq = _add(

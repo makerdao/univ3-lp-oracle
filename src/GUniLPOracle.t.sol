@@ -18,6 +18,22 @@ interface OSMLike {
 
 contract GUniLPOracleTest is DSTest {
 
+    function assertEqApprox(uint256 _a, uint256 _b, uint256 _tolerance) internal {
+        uint256 a = _a;
+        uint256 b = _b;
+        if (a < b) {
+            uint256 tmp = a;
+            a = b;
+            b = tmp;
+        }
+        if (a - b > _tolerance * a / 1e4) {
+            emit log_bytes32("Error: Wrong `uint' value");
+            emit log_named_uint("  Expected", _b);
+            emit log_named_uint("    Actual", _a);
+            fail();
+        }
+    }
+
     // --- Math ---
     uint256 constant WAD = 10 ** 18;
     uint256 constant RAY = 10 ** 27;
@@ -160,7 +176,9 @@ contract GUniLPOracleTest is DSTest {
         // Price should be the value of all the tokens combined divided by totalSupply()
         (uint256 balDai, uint256 balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
         uint256 expectedPrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
-        assertEq(lpTokenPrice, expectedPrice);
+        // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
+        // Allow for a 0.1% discrepancy
+        assertEqApprox(lpTokenPrice, expectedPrice, 10);    
     }
 
 }
