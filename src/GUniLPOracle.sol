@@ -224,7 +224,7 @@ contract GUniLPOracle {
 
         // Get balances of the tokens in the pool
         (uint256 b0, uint256 b1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
-        require(b0 > 0 && b1 > 0, "GUniLPOracle/invalid-balances");
+        require(b0 > 0 || b1 > 0, "GUniLPOracle/invalid-balances");
 
         // Add the total value of each token together and divide by the totalSupply to get the unit price
         uint256 preq = _add(
