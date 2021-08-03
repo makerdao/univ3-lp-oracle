@@ -20,9 +20,10 @@
 pragma solidity =0.6.12;
 
 interface ERC20Like {
-    function decimals()         external view returns (uint8);
-    function balanceOf(address) external view returns (uint256);
-    function totalSupply()      external view returns (uint256);
+    function decimals()                 external view returns (uint8);
+    function balanceOf(address)         external view returns (uint256);
+    function totalSupply()              external view returns (uint256);
+    function transfer(address, uint256) external;
 }
 
 interface GUNILike {
@@ -30,6 +31,7 @@ interface GUNILike {
     function token1()                               external view returns (address);
     function getUnderlyingBalances()                external view returns (uint256,uint256);
     function getUnderlyingBalancesAtPrice(uint160)  external view returns (uint256,uint256);
+    function pool()                                 external view returns (address);
 }
 
 interface OracleLike {
@@ -118,7 +120,7 @@ contract GUniLPOracle {
     }
 
     // FROM https://github.com/abdk-consulting/abdk-libraries-solidity/blob/16d7e1dd8628dfa2f88d5dadab731df7ada70bdd/ABDKMath64x64.sol#L687
-    function sqrt (uint256 _x) private pure returns (uint128) {
+    function sqrt(uint256 _x) private pure returns (uint128) {
         if (_x == 0) return 0;
         else {
             uint256 xx = _x;
@@ -218,7 +220,7 @@ contract GUniLPOracle {
         require(p0 != 0, "GUniLPOracle/invalid-oracle-0-price");
         uint256 p1 = OracleLike(orb1).read();  // Query token1 price from oracle (WAD)
         require(p1 != 0, "GUniLPOracle/invalid-oracle-1-price");
-        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(p1, (1 << 136)) / p0) << 28);
+        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(p1 / TO_18_DEC_0, (1 << 136)) / (p0 / TO_18_DEC_1)) << 28);
 
         // Get balances of the tokens in the pool
         (uint256 b0, uint256 b1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
