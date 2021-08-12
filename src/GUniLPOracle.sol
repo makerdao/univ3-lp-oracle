@@ -223,13 +223,13 @@ contract GUniLPOracle {
         uint160 sqrtPriceX96 = toUint160(sqrt(_mul(p1 / TO_18_DEC_1, (1 << 136)) / (p0 / TO_18_DEC_0)) << 28);
 
         // Get balances of the tokens in the pool
-        (uint256 b0, uint256 b1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
-        require(b0 > 0 || b1 > 0, "GUniLPOracle/invalid-balances");
+        (uint256 r0, uint256 r1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
+        require(r0 > 0 || r1 > 0, "GUniLPOracle/invalid-balances");
 
         // Add the total value of each token together and divide by the totalSupply to get the unit price
         uint256 preq = _add(
-            _mul(p0, _mul(b0, TO_18_DEC_0)),
-            _mul(p1, _mul(b1, TO_18_DEC_1))
+            _mul(p0, _mul(r0, TO_18_DEC_0)),
+            _mul(p1, _mul(r1, TO_18_DEC_1))
         ) / ERC20Like(src).totalSupply();
         require(preq < 2 ** 128, "GUniLPOracle/quote-overflow");
         quote = uint128(preq);  // WAD
