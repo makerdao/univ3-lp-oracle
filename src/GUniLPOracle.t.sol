@@ -14,11 +14,16 @@ interface Hevm {
 interface OSMLike {
     function bud(address) external returns (uint);
     function peek() external returns (bytes32, bool);
+    function kiss(address) external;
 }
 
 interface UniPoolLike {
     function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool);
     function swap(address, bool, int256, uint160, bytes calldata) external;
+}
+
+interface AuthLike {
+    function wards(address) external returns (uint256);
 }
 
 contract GUniLPOracleTest is DSTest {
@@ -53,6 +58,40 @@ contract GUniLPOracleTest is DSTest {
             emit log_named_uint("    Actual", _a);
             fail();
         }
+    }
+
+    function giveAuthAccess (address _base, address target) internal {
+        AuthLike base = AuthLike(_base);
+
+        // Edge case - ward is already set
+        if (base.wards(target) == 1) return;
+
+        for (int i = 0; i < 100; i++) {
+            // Scan the storage for the ward storage slot
+            bytes32 prevValue = hevm.load(
+                address(base),
+                keccak256(abi.encode(target, uint256(i)))
+            );
+            hevm.store(
+                address(base),
+                keccak256(abi.encode(target, uint256(i))),
+                bytes32(uint256(1))
+            );
+            if (base.wards(target) == 1) {
+                // Found it
+                return;
+            } else {
+                // Keep going after restoring the original value
+                hevm.store(
+                    address(base),
+                    keccak256(abi.encode(target, uint256(i))),
+                    prevValue
+                );
+            }
+        }
+
+        // We have failed if we reach here
+        assertTrue(false);
     }
 
     function giveTokens(address token, uint256 amount) internal {
@@ -154,15 +193,21 @@ contract GUniLPOracleTest is DSTest {
     Hevm                 hevm;
     GUniLPOracleFactory  factory;
     GUniLPOracle         daiUsdcLPOracle;
+    GUniLPOracle         ethUsdcLPOracle;
 
     address constant DAI_USDC_GUNI_POOL = 0xAbDDAfB225e10B90D798bB8A886238Fb835e2053;
     address constant DAI_USDC_UNI_POOL  = 0x6c6Bc977E13Df9b0de53b251522280BB72383700;
+    address constant ETH_USDC_GUNI_POOL = 0xa6c49FD13E50a30C65E6C8480aADA132011D0613;
+    address constant ETH_USDC_UNI_POOL  = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640;
     address constant USDC_ORACLE        = 0x77b68899b99b686F415d074278a9a16b336085A0;
     address constant DAI_ORACLE         = 0x47c3dC029825Da43BE595E21fffD0b66FfcB7F6e;
+    address constant ETH_ORACLE         = 0x81FE72B5A8d1A857d176C3E7d5Bd2679A9B85763;
     address constant DAI                = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address constant USDC               = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant ETH                = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    bytes32 constant poolNameDAI       = "DAI-USDC-GUNI-LP";
+    bytes32 constant poolNameDAI        = "DAI-USDC-GUNI-LP";
+    bytes32 constant poolNameETH        = "ETH-USDC-GUNI-LP";
 
     function setUp() public {
         hevm = Hevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
@@ -176,8 +221,20 @@ contract GUniLPOracleTest is DSTest {
             USDC_ORACLE)
         );
         daiUsdcLPOracle.kiss(address(this));
-
         assertEq(GUNILike(DAI_USDC_GUNI_POOL).pool(), DAI_USDC_UNI_POOL);
+
+        ethUsdcLPOracle = GUniLPOracle(factory.build(
+            address(this),
+            ETH_USDC_GUNI_POOL,
+            poolNameETH,
+            USDC_ORACLE,
+            ETH_ORACLE)
+        );
+        giveAuthAccess(ETH_ORACLE, address(this));
+        OSMLike(ETH_ORACLE).kiss(address(ethUsdcLPOracle));
+        OSMLike(ETH_ORACLE).kiss(address(this));
+        ethUsdcLPOracle.kiss(address(this));
+        assertEq(GUNILike(ETH_USDC_GUNI_POOL).pool(), ETH_USDC_UNI_POOL);
     }
 
     ///////////////////////////////////////////////////////
@@ -261,7 +318,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
     }
 
-    function test_calc_sqrt_price() public {
+    function test_calc_sqrt_price_dai() public {
         // Both these oracles should be hard coded to 1
         uint256 dec0 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token0()).decimals());
         uint256 dec1 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token1()).decimals());
@@ -269,13 +326,13 @@ contract GUniLPOracleTest is DSTest {
         assertEq(p0, 1e18);
         uint256 p1 = OracleLike(USDC_ORACLE).read();
         assertEq(p1, 1e18);
-        p0 /= 10 ** (18 - dec0);
-        p1 /= 10 ** (18 - dec1);
+        p0 *= 10 ** (18 - dec0);
+        p1 *= 10 ** (18 - dec1);
         
         // Check both square roots produce the same results
-        uint256 sqrtPriceX96_1 = sqrt1(mul(p1, (1 << 136)) / p0) << 28;
+        uint256 sqrtPriceX96_1 = sqrt1(mul(p0, (1 << 136)) / p1) << 28;
         assertEq(sqrtPriceX96_1, 79228162514264115904512);
-        uint256 sqrtPriceX96_2 = sqrt2(mul(p1, (1 << 136)) / p0) << 28;
+        uint256 sqrtPriceX96_2 = sqrt2(mul(p0, (1 << 136)) / p1) << 28;
         assertEq(sqrtPriceX96_2, 79228162514264115904512);
 
         // Check that the price roughly matches the Uniswap pool price during normal conditions
@@ -376,6 +433,45 @@ contract GUniLPOracleTest is DSTest {
         assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
     }
 
-    // TODO add tests for non-stablecoin oracles when they become available
+    function test_calc_sqrt_price_eth() public {
+        // Both these oracles should be hard coded to 1
+        uint256 dec0 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token0()).decimals());
+        uint256 dec1 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token1()).decimals());
+        uint256 p0 = OracleLike(USDC_ORACLE).read();
+        assertEq(p0, 1e18);
+        uint256 p1 = OracleLike(ETH_ORACLE).read();
+        assertGt(p1, 0);
+        
+        // Check both square roots produce the same results
+        uint256 sqrtPriceX96_1 = sqrt1(mul(p0 * 1e12, (1 << 136)) / p1) << 28;
+        uint256 sqrtPriceX96_2 = sqrt2(mul(p0 * 1e12, (1 << 136)) / p1) << 28;
+        assertEq(sqrtPriceX96_2, sqrtPriceX96_1);
+
+        // Check that the price roughly matches the Uniswap pool price during normal conditions
+        (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(ETH_USDC_UNI_POOL).slot0();
+        assertEqApprox(sqrtPriceX96_1, sqrtPriceX96_uni, 500);      // Maker oracles have a 1 hour delay, so allow for a 5% deviation
+
+        // Check that the reserves match for both sqrt prices
+        (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96_2));
+        (uint256 r0_2, uint256 r1_2) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        assertEq(r0_1, r0_1);
+        assertEq(r1_2, r1_2);
+    }
+
+    function test_seek_eth() public {
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint128 lpTokenPrice128 = uint128(uint256(ethUsdcLPOracle.read()));
+        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
+        uint256 lpTokenPrice = uint256(lpTokenPrice128);
+        // Price should be the value of all the tokens combined divided by totalSupply()
+        (uint256 balUsdc, uint256 balEth) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        uint256 p1 = OracleLike(ETH_ORACLE).read();
+        uint256 expectedPrice = (balEth * p1 + balUsdc * 1e12 * 1e18) / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
+        // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
+        // Allow for a 0.1% discrepancy
+        assertEqApprox(lpTokenPrice, expectedPrice, 10);    
+    }
 
 }
