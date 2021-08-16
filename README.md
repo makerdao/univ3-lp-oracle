@@ -11,6 +11,8 @@ Define:
 
 p0 = price of token0 in USD
 p1 = price of token1 in USD
+UNITS_0 = decimals of token0
+UNITS_1 = decimals of token1
 
 token1/token0 = (p0 / 10^UNITS_0) / (p1 / 10^UNITS_1)               [Conversion from Maker's price ratio into Uniswap's format]
               = (p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)
