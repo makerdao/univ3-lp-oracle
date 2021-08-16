@@ -17,6 +17,6 @@ token1/token0 = (p0 / 10^UNITS_0) / (p1 / 10^UNITS_1)               [Conversion 
 
 sqrtPriceX96 = sqrt(token1/token0) * 2^96                           [From Uniswap's definition]
              = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^96
-             = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^68 * 2^28
-             = sqrt((p0 * 10^UNITS_1 * 2^136) / (p1 * 10^UNITS_0)) * 2^28
+             = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^48 * 2^48
+             = sqrt((p0 * 10^UNITS_1 * 2^96) / (p1 * 10^UNITS_0)) * 2^48
 ```

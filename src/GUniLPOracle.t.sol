@@ -330,14 +330,14 @@ contract GUniLPOracleTest is DSTest {
         p1 *= 10 ** (18 - dec1);
         
         // Check both square roots produce the same results
-        uint256 sqrtPriceX96_1 = sqrt1(mul(p0, (1 << 136)) / p1) << 28;
-        assertEq(sqrtPriceX96_1, 79228162514264115904512);
-        uint256 sqrtPriceX96_2 = sqrt2(mul(p0, (1 << 136)) / p1) << 28;
-        assertEq(sqrtPriceX96_2, 79228162514264115904512);
+        uint256 sqrtPriceX96_1 = sqrt1(mul(p0, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96_1, 79228162314232456544256);
+        uint256 sqrtPriceX96_2 = sqrt2(mul(p0, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96_2, 79228162314232456544256);
 
         // Check that the price roughly matches the Uniswap pool price during normal conditions
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(DAI_USDC_UNI_POOL).slot0();
-        assertEqApprox(sqrtPriceX96_uni, 79228162514264115904512, 10);
+        assertEqApprox(sqrtPriceX96_uni, 79228162314232456544256, 10);
     }
 
     function test_seek_dai() public {
@@ -443,8 +443,8 @@ contract GUniLPOracleTest is DSTest {
         assertGt(p1, 0);
         
         // Check both square roots produce the same results
-        uint256 sqrtPriceX96_1 = sqrt1(mul(p0 * 1e12, (1 << 136)) / p1) << 28;
-        uint256 sqrtPriceX96_2 = sqrt2(mul(p0 * 1e12, (1 << 136)) / p1) << 28;
+        uint256 sqrtPriceX96_1 = sqrt1(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
+        uint256 sqrtPriceX96_2 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
         assertEq(sqrtPriceX96_2, sqrtPriceX96_1);
 
         // Check that the price roughly matches the Uniswap pool price during normal conditions

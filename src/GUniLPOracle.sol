@@ -224,7 +224,7 @@ contract GUniLPOracle {
         require(p0 != 0, "GUniLPOracle/invalid-oracle-0-price");
         uint256 p1 = OracleLike(orb1).read();  // Query token1 price from oracle (WAD)
         require(p1 != 0, "GUniLPOracle/invalid-oracle-1-price");
-        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(_mul(p0, UNIT_1), (1 << 136)) / (_mul(p1, UNIT_0))) << 28);
+        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(_mul(p0, UNIT_1), (1 << 96)) / (_mul(p1, UNIT_0))) << 48);
 
         // Get balances of the tokens in the pool
         (uint256 r0, uint256 r1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
