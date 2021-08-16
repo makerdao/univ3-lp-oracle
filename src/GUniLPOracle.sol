@@ -97,6 +97,8 @@ contract GUniLPOracle {
     Feed    internal nxt;  // Queued price   (mem slot 0x4)
 
     // --- Data ---
+    uint256 private immutable UNIT_0;  // Numerical representation of one token of token0 (10^decimals) 
+    uint256 private immutable UNIT_1;  // Numerical representation of one token of token1 (10^decimals) 
     uint256 private immutable TO_18_DEC_0;  // Conversion factor to 18 decimals
     uint256 private immutable TO_18_DEC_1;  // Conversion factor to 18 decimals
 
@@ -165,9 +167,11 @@ contract GUniLPOracle {
         wat  = _wat;
         uint256 dec0 = uint256(ERC20Like(GUNILike(_src).token0()).decimals());
         require(dec0 <= 18, "GUniLPOracle/token0-dec-gt-18");
+        UNIT_0 = 10 ** dec0;
         TO_18_DEC_0 = 10 ** (18 - dec0);
         uint256 dec1 = uint256(ERC20Like(GUNILike(_src).token1()).decimals());
         require(dec1 <= 18, "GUniLPOracle/token1-dec-gt-18");
+        UNIT_1 = 10 ** dec1;
         TO_18_DEC_1 = 10 ** (18 - dec1);
         orb0 = _orb0;
         orb1 = _orb1;
@@ -220,7 +224,7 @@ contract GUniLPOracle {
         require(p0 != 0, "GUniLPOracle/invalid-oracle-0-price");
         uint256 p1 = OracleLike(orb1).read();  // Query token1 price from oracle (WAD)
         require(p1 != 0, "GUniLPOracle/invalid-oracle-1-price");
-        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(_mul(p0, TO_18_DEC_0), (1 << 136)) / (_mul(p1, TO_18_DEC_1))) << 28);
+        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(_mul(p0, UNIT_1), (1 << 136)) / (_mul(p1, UNIT_0))) << 28);
 
         // Get balances of the tokens in the pool
         (uint256 r0, uint256 r1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
