@@ -17,21 +17,48 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+///////////////////////////////////////////////////////
+//                                                   //
+//    Methodology for Calculating LP Token Price     //
+//                                                   //
+///////////////////////////////////////////////////////
+
+// We derive the sqrtPriceX96 via Maker's own oracles to prevent price manipulation in the pool:
+// 
+// p0 = price of token0 in USD
+// p1 = price of token1 in USD
+// UNITS_0 = decimals of token0
+// UNITS_1 = decimals of token1
+// 
+// token1/token0 = (p0 / 10^UNITS_0) / (p1 / 10^UNITS_1)               [Conversion from Maker's price ratio into Uniswap's format]
+//               = (p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)
+// 
+// sqrtPriceX96 = sqrt(token1/token0) * 2^96                           [From Uniswap's definition]
+//              = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^96
+//              = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^48 * 2^48
+//              = sqrt((p0 * 10^UNITS_1 * 2^96) / (p1 * 10^UNITS_0)) * 2^48
+// 
+// Once we have the sqrtPriceX96 we can use that to compute the fair reserves for each token. This part may be slightly subjective
+// depending on the implementation, but we expect most tokens to provide something like getUnderlyingBalancesAtPrice(uint160 sqrtPriceX96)
+// which will forward our oracle-calculated `sqrtPriceX96` to the Uniswap-provided LiquidityAmounts.getAmountsForLiquidity(...)
+// This function will return the fair reserves for each token. Vendor-specific logic is then used to tack any uninvested fees on top of those amounts.
+// 
+// Once we have the fair reserves and the prices we can compute the token price by:
+// 
+// Token Price = TVL / Token Supply
+//             = (r0 * p0 + r1 * p1) / totalSupply
+
 pragma solidity =0.6.12;
 
 interface ERC20Like {
     function decimals()                 external view returns (uint8);
-    function balanceOf(address)         external view returns (uint256);
     function totalSupply()              external view returns (uint256);
-    function transfer(address, uint256) external;
 }
 
 interface GUNILike {
     function token0()                               external view returns (address);
     function token1()                               external view returns (address);
-    function getUnderlyingBalances()                external view returns (uint256,uint256);
     function getUnderlyingBalancesAtPrice(uint160)  external view returns (uint256,uint256);
-    function pool()                                 external view returns (address);
 }
 
 interface OracleLike {
