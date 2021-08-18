@@ -256,6 +256,18 @@ contract GUniLPOracleTest is DSTest {
         assertEq(GUNILike(ETH_USDC_GUNI_POOL).pool(), ETH_USDC_UNI_POOL);
     }
 
+    /// @notice Uniswap v3 callback fn, called back on pool.swap
+    function uniswapV3SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata /*data*/
+    ) external {
+        if (amount0Delta > 0)
+            ERC20Like(DAI).transfer(msg.sender, uint256(amount0Delta));
+        else if (amount1Delta > 0)
+            ERC20Like(USDC).transfer(msg.sender, uint256(amount1Delta));
+    }
+
     ///////////////////////////////////////////////////////
     //                                                   //
     //                  Factory Tests                    //
@@ -273,9 +285,9 @@ contract GUniLPOracleTest is DSTest {
         assertTrue(address(oracle) != address(0));          // Verify oracle deployed successfully
         assertEq(oracle.wards(address(this)), 1);           // Verify caller is owner
         assertEq(oracle.wards(address(factory)), 0);        // Vérify factory is not owner
-        assertEq(oracle.src(), DAI_USDC_GUNI_POOL);           // Verify uni pool is source
-        assertEq(oracle.orb0(), DAI_ORACLE);               // Verify oracle configured correctly
-        assertEq(oracle.orb1(), USDC_ORACLE);                // Verify oracle configured correctly
+        assertEq(oracle.src(), DAI_USDC_GUNI_POOL);         // Verify uni pool is source
+        assertEq(oracle.orb0(), DAI_ORACLE);                // Verify oracle configured correctly
+        assertEq(oracle.orb1(), USDC_ORACLE);               // Verify oracle configured correctly
         assertEq(oracle.wat(), poolNameDAI);                // Verify name is set correctly
         assertEq(uint256(oracle.stopped()), 0);             // Verify contract is active
         assertTrue(factory.isOracle(address(oracle)));      // Verify factory recorded oracle
@@ -372,18 +384,6 @@ contract GUniLPOracleTest is DSTest {
         // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
         // Allow for a 0.1% discrepancy
         assertEqApprox(lpTokenPrice, expectedPrice, 10);    
-    }
-
-    /// @notice Uniswap v3 callback fn, called back on pool.swap
-    function uniswapV3SwapCallback(
-        int256 amount0Delta,
-        int256 amount1Delta,
-        bytes calldata /*data*/
-    ) external {
-        if (amount0Delta > 0)
-            ERC20Like(DAI).transfer(msg.sender, uint256(amount0Delta));
-        else if (amount1Delta > 0)
-            ERC20Like(USDC).transfer(msg.sender, uint256(amount1Delta));
     }
 
     function test_flash_loan_protection_dai_to_usdc() public {
