@@ -15,6 +15,7 @@ interface OSMLike {
     function bud(address) external returns (uint);
     function peek() external returns (bytes32, bool);
     function kiss(address) external;
+    function poke() external;
 }
 
 interface UniPoolLike {
@@ -369,6 +370,7 @@ contract GUniLPOracleTest is DSTest {
         // Check that the price roughly matches the Uniswap pool price during normal conditions
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(DAI_USDC_UNI_POOL).slot0();
         assertEqApprox(sqrtPriceX96_uni, 79228162314232456544256, 10);
+        assertEqApprox(sqrtPriceX96_1, sqrtPriceX96_uni, 10);
     }
 
     function test_seek_dai() public {
@@ -387,6 +389,10 @@ contract GUniLPOracleTest is DSTest {
     }
 
     function test_calc_sqrt_price_eth() public {
+        hevm.warp(now + 1 hours);
+        OSMLike(ETH_ORACLE).poke();
+        ethUsdcLPOracle.poke();
+
         // Both these oracles should be hard coded to 1
         uint256 dec0 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token0()).decimals());
         uint256 dec1 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token1()).decimals());
@@ -402,7 +408,7 @@ contract GUniLPOracleTest is DSTest {
 
         // Check that the price roughly matches the Uniswap pool price during normal conditions
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(ETH_USDC_UNI_POOL).slot0();
-        assertEqApprox(sqrtPriceX96_1, sqrtPriceX96_uni, 500);      // Maker oracles have a 1 hour delay, so allow for a 5% deviation
+        assertEqApprox(sqrtPriceX96_1, sqrtPriceX96_uni, 100);      // We've used the most recent Medanizer price, but there may still be some deviation from Uniswap
 
         // Check that the reserves match for both sqrt prices
         (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96_2));
