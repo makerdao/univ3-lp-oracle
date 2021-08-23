@@ -263,9 +263,9 @@ contract GUniLPOracleTest is DSTest {
         bytes calldata /*data*/
     ) external {
         if (amount0Delta > 0)
-            ERC20Like(DAI).transfer(msg.sender, uint256(amount0Delta));
+            ERC20Like(USDC).transfer(msg.sender, uint256(amount0Delta));
         else if (amount1Delta > 0)
-            ERC20Like(USDC).transfer(msg.sender, uint256(amount1Delta));
+            ERC20Like(ETH).transfer(msg.sender, uint256(amount1Delta));
     }
 
     ///////////////////////////////////////////////////////
@@ -386,72 +386,6 @@ contract GUniLPOracleTest is DSTest {
         assertEqApprox(lpTokenPrice, expectedPrice, 10);    
     }
 
-    function test_flash_loan_protection_dai_to_usdc() public {
-        uint256 balOrig = ERC20Like(USDC).balanceOf(DAI_USDC_UNI_POOL);
-        assertGt(balOrig, 0);
-
-        daiUsdcLPOracle.poke();
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        uint128 lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPriceOrig = uint256(lpTokenPrice128);
-        (uint256 balDai, uint256 balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePriceOrig = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
-
-        // Give enough tokens to totally skew the reserves to almost all USDC
-        uint256 amount = 10 * ERC20Like(DAI).balanceOf(DAI_USDC_UNI_POOL);
-        giveTokens(DAI, amount);
-        UniPoolLike(DAI_USDC_UNI_POOL).swap(address(this), true, int256(amount), 69260490254391874038245, "");
-        assertLt(ERC20Like(USDC).balanceOf(DAI_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
-
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPrice = uint256(lpTokenPrice128);
-        (balDai, balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
-
-        assertEqApprox(naivePrice, naivePriceOrig, 10);         // Due to range being so tight this won't deviate much (this won't be the case for larger ranges)
-        assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
-    }
-
-    function test_flash_loan_protection_usdc_to_dai() public {
-        uint256 balOrig = ERC20Like(DAI).balanceOf(DAI_USDC_UNI_POOL);
-        assertGt(balOrig, 0);
-
-        daiUsdcLPOracle.poke();
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        uint128 lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPriceOrig = uint256(lpTokenPrice128);
-        (uint256 balDai, uint256 balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePriceOrig = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
-
-        // Give enough tokens to totally skew the reserves to almost all USDC
-        uint256 amount = 10 * ERC20Like(USDC).balanceOf(DAI_USDC_UNI_POOL);
-        giveTokens(USDC, amount);
-        UniPoolLike(DAI_USDC_UNI_POOL).swap(address(this), false, int256(amount), 89260490254391874038245, "");
-        assertLt(ERC20Like(DAI).balanceOf(DAI_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New DAI balance should be less than 1% of original balance
-
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPrice = uint256(lpTokenPrice128);
-        (balDai, balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
-
-        assertNotEqApprox(naivePrice, naivePriceOrig, 10);      // Due to the lop-sidedness of the current DAI/USDC price this will actually deviate by a bit more than the other way
-        assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
-    }
-
     function test_calc_sqrt_price_eth() public {
         // Both these oracles should be hard coded to 1
         uint256 dec0 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token0()).decimals());
@@ -491,6 +425,40 @@ contract GUniLPOracleTest is DSTest {
         // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
         // Allow for a 0.1% discrepancy
         assertEqApprox(lpTokenPrice, expectedPrice, 10);    
+    }
+
+    // This will massively skew the ETH-USDC pool in Uniswap to confirm our Oracle is unaffected
+    function test_flash_loan_protection() public {
+        uint256 balOrig = ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL);
+        assertGt(balOrig, 0);
+
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint128 lpTokenPrice128 = uint128(uint256(ethUsdcLPOracle.read()));
+        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
+        uint256 lpTokenPriceOrig = uint256(lpTokenPrice128);
+        (uint256 balUsdc, uint256 balEth) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        uint256 naivePriceOrig = (balEth + balUsdc * 1e12) * WAD / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
+
+        // Give enough tokens to totally skew the reserves
+        uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
+        giveTokens(ETH, amount);
+        UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
+
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        lpTokenPrice128 = uint128(uint256(ethUsdcLPOracle.read()));
+        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
+        uint256 lpTokenPrice = uint256(lpTokenPrice128);
+        (balUsdc, balEth) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        uint256 naivePrice = (balEth + balUsdc * 1e12) * WAD / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
+
+        assertNotEqApprox(naivePrice, naivePriceOrig, 5000);    // This should be off by a lot (above 50% deviation)
+        assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
     }
 
 }
