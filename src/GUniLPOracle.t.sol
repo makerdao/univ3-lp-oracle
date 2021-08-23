@@ -350,7 +350,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
     }
 
-    function test_calc_sqrt_price_dai() public {
+    function test_calc_sqrts_match_dai() public {
         // Both these oracles should be hard coded to 1
         uint256 dec0 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token0()).decimals());
         uint256 dec1 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token1()).decimals());
@@ -366,11 +366,24 @@ contract GUniLPOracleTest is DSTest {
         assertEq(sqrtPriceX96_1, 79228162314232456544256);
         uint256 sqrtPriceX96_2 = sqrt2(mul(p0, (1 << 96)) / p1) << 48;
         assertEq(sqrtPriceX96_2, 79228162314232456544256);
+    }
 
+    function test_calc_sqrt_price_dai() public {
+        // Both these oracles should be hard coded to 1
+        uint256 dec0 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token0()).decimals());
+        uint256 dec1 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token1()).decimals());
+        uint256 p0 = OracleLike(DAI_ORACLE).read();
+        assertEq(p0, 1e18);
+        uint256 p1 = OracleLike(USDC_ORACLE).read();
+        assertEq(p1, 1e18);
+        p0 *= 10 ** (18 - dec0);
+        p1 *= 10 ** (18 - dec1);
+        
         // Check that the price roughly matches the Uniswap pool price during normal conditions
+        uint256 sqrtPriceX96 = sqrt2(mul(p0, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96, 79228162314232456544256);
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(DAI_USDC_UNI_POOL).slot0();
-        assertEqApprox(sqrtPriceX96_uni, 79228162314232456544256, 10);
-        assertEqApprox(sqrtPriceX96_1, sqrtPriceX96_uni, 10);
+        assertEqApprox(sqrtPriceX96_uni, sqrtPriceX96, 10);
     }
 
     function test_seek_dai() public {
@@ -388,7 +401,7 @@ contract GUniLPOracleTest is DSTest {
         assertEqApprox(lpTokenPrice, expectedPrice, 10);    
     }
 
-    function test_calc_sqrt_price_eth() public {
+    function test_calc_sqrts_match_eth() public {
         hevm.warp(now + 1 hours);
         OSMLike(ETH_ORACLE).poke();
         ethUsdcLPOracle.poke();
@@ -405,16 +418,31 @@ contract GUniLPOracleTest is DSTest {
         uint256 sqrtPriceX96_1 = sqrt1(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
         uint256 sqrtPriceX96_2 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
         assertEq(sqrtPriceX96_2, sqrtPriceX96_1);
+    }
 
+    function test_calc_sqrt_price_eth() public {
+        hevm.warp(now + 1 hours);
+        OSMLike(ETH_ORACLE).poke();
+        ethUsdcLPOracle.poke();
+
+        // Both these oracles should be hard coded to 1
+        uint256 dec0 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token0()).decimals());
+        uint256 dec1 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token1()).decimals());
+        uint256 p0 = OracleLike(USDC_ORACLE).read();
+        assertEq(p0, 1e18);
+        uint256 p1 = OracleLike(ETH_ORACLE).read();
+        assertGt(p1, 0);
+        
         // Check that the price roughly matches the Uniswap pool price during normal conditions
+        uint256 sqrtPriceX96 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(ETH_USDC_UNI_POOL).slot0();
-        assertEqApprox(sqrtPriceX96_1, sqrtPriceX96_uni, 100);      // We've used the most recent Medanizer price, but there may still be some deviation from Uniswap
+        assertEqApprox(sqrtPriceX96, sqrtPriceX96_uni, 100);      // We've used the most recent Medanizer price, but there may still be some deviation from Uniswap
 
-        // Check that the reserves match for both sqrt prices
-        (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96_2));
+        // Check that the reserves roughly match with Uniswap spot and our sqrtPrice
+        (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96));
         (uint256 r0_2, uint256 r1_2) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
-        assertEq(r0_1, r0_1);
-        assertEq(r1_2, r1_2);
+        assertEqApprox(r0_2, r0_1, 200);
+        assertEqApprox(r1_2, r1_1, 200);
     }
 
     function test_seek_eth() public {
