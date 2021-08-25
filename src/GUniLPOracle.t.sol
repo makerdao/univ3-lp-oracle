@@ -443,8 +443,8 @@ contract GUniLPOracleTest is DSTest {
         // Check that the reserves roughly match with Uniswap spot and our sqrtPrice
         (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96));
         (uint256 r0_2, uint256 r1_2) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
-        assertEqApprox(r0_2, r0_1, 200);
-        assertEqApprox(r1_2, r1_1, 200);
+        assertEqApprox(r0_2, r0_1, 300);
+        assertEqApprox(r1_2, r1_1, 300);
     }
 
     function test_seek_eth() public {
