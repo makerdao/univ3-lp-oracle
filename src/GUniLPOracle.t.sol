@@ -40,6 +40,8 @@ interface GUNILike {
     function getUnderlyingBalances()                external view returns (uint256,uint256);
     function getUnderlyingBalancesAtPrice(uint160)  external view returns (uint256,uint256);
     function pool()                                 external view returns (address);
+    function mint(uint256, address)                 external returns (uint256, uint256, uint128);
+    function burn(uint256, address)                 external returns (uint256, uint256, uint128);
 }
 
 interface OracleLike {
@@ -407,8 +409,6 @@ contract GUniLPOracleTest is DSTest {
         ethUsdcLPOracle.poke();
 
         // Both these oracles should be hard coded to 1
-        uint256 dec0 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token0()).decimals());
-        uint256 dec1 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token1()).decimals());
         uint256 p0 = OracleLike(USDC_ORACLE).read();
         assertEq(p0, 1e18);
         uint256 p1 = OracleLike(ETH_ORACLE).read();
@@ -426,8 +426,6 @@ contract GUniLPOracleTest is DSTest {
         ethUsdcLPOracle.poke();
 
         // Both these oracles should be hard coded to 1
-        uint256 dec0 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token0()).decimals());
-        uint256 dec1 = uint256(ERC20Like(GUNILike(ethUsdcLPOracle.src()).token1()).decimals());
         uint256 p0 = OracleLike(USDC_ORACLE).read();
         assertEq(p0, 1e18);
         uint256 p1 = OracleLike(ETH_ORACLE).read();
@@ -493,6 +491,35 @@ contract GUniLPOracleTest is DSTest {
 
         assertNotEqApprox(naivePrice, naivePriceOrig, 5000);    // This should be off by a lot (above 50% deviation)
         assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
+    }
+
+    function test_zero_totalSupply() public {
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPriceOrig = uint256(ethUsdcLPOracle.read());
+
+        // Give ourselves all the tokens available
+        uint256 lpTokens = ERC20Like(ETH_USDC_GUNI_POOL).totalSupply();
+        (uint256 ethBal, uint256 usdcBal) = GUNILike(ETH_USDC_GUNI_POOL).getUnderlyingBalances();
+        giveTokens(ETH_USDC_GUNI_POOL, lpTokens);
+
+        // Burn all tokens
+        (uint256 amount0, uint256 amount1, uint128 liquidityBurned) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens, address(this));
+
+        // Should all underlying balances
+        assertEq(amount0, ethBal);
+        assertEq(amount1, usdcBal);
+
+        hevm.warp(now + 1 hours);
+        // This poke should fail as both balances are zero
+        try ethUsdcLPOracle.poke() {
+            assertTrue(false);
+        } catch {
+        }
+        uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
+
+        assertEq(lpTokenPrice, lpTokenPriceOrig);
     }
 
 }
