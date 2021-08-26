@@ -570,4 +570,20 @@ contract GUniLPOracleTest is DSTest {
         assertGt(uint256(liquidityEnd), uint256(liquidityOrig));
     }
 
+    function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
+        uint256 MAX_PRICE = 1e12 * WAD;     // Max underlying asset Oracle price supported is $1 Trillion USD
+        uint256 MAX_DEC = 18;
+
+        p0 %= MAX_PRICE;
+        p1%= MAX_PRICE;
+        dec0 %= MAX_DEC;
+        dec1 %= MAX_DEC;
+
+        uint256 UNIT_0 = 10 ** dec0;
+        uint256 UNIT_1 = 10 ** dec1;
+
+        uint256 sqrtPriceX96 = sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48;
+        assertLt(sqrtPriceX96, 1 << 160);
+    }
+
 }
