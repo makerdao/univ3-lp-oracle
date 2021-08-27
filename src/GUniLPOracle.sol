@@ -17,21 +17,48 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+///////////////////////////////////////////////////////
+//                                                   //
+//    Methodology for Calculating LP Token Price     //
+//                                                   //
+///////////////////////////////////////////////////////
+
+// We derive the sqrtPriceX96 via Maker's own oracles to prevent price manipulation in the pool:
+// 
+// p0 = price of token0 in USD
+// p1 = price of token1 in USD
+// UNITS_0 = decimals of token0
+// UNITS_1 = decimals of token1
+// 
+// token1/token0 = (p0 / 10^UNITS_0) / (p1 / 10^UNITS_1)               [Conversion from Maker's price ratio into Uniswap's format]
+//               = (p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)
+// 
+// sqrtPriceX96 = sqrt(token1/token0) * 2^96                           [From Uniswap's definition]
+//              = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^96
+//              = sqrt((p0 * 10^UNITS_1) / (p1 * 10^UNITS_0)) * 2^48 * 2^48
+//              = sqrt((p0 * 10^UNITS_1 * 2^96) / (p1 * 10^UNITS_0)) * 2^48
+// 
+// Once we have the sqrtPriceX96 we can use that to compute the fair reserves for each token. This part may be slightly subjective
+// depending on the implementation, but we expect most tokens to provide something like getUnderlyingBalancesAtPrice(uint160 sqrtPriceX96)
+// which will forward our oracle-calculated `sqrtPriceX96` to the Uniswap-provided LiquidityAmounts.getAmountsForLiquidity(...)
+// This function will return the fair reserves for each token. Vendor-specific logic is then used to tack any uninvested fees on top of those amounts.
+// 
+// Once we have the fair reserves and the prices we can compute the token price by:
+// 
+// Token Price = TVL / Token Supply
+//             = (r0 * p0 + r1 * p1) / totalSupply
+
 pragma solidity =0.6.12;
 
 interface ERC20Like {
     function decimals()                 external view returns (uint8);
-    function balanceOf(address)         external view returns (uint256);
     function totalSupply()              external view returns (uint256);
-    function transfer(address, uint256) external;
 }
 
 interface GUNILike {
     function token0()                               external view returns (address);
     function token1()                               external view returns (address);
-    function getUnderlyingBalances()                external view returns (uint256,uint256);
     function getUnderlyingBalancesAtPrice(uint160)  external view returns (uint256,uint256);
-    function pool()                                 external view returns (address);
 }
 
 interface OracleLike {
@@ -97,6 +124,8 @@ contract GUniLPOracle {
     Feed    internal nxt;  // Queued price   (mem slot 0x4)
 
     // --- Data ---
+    uint256 private immutable UNIT_0;  // Numerical representation of one token of token0 (10^decimals) 
+    uint256 private immutable UNIT_1;  // Numerical representation of one token of token1 (10^decimals) 
     uint256 private immutable TO_18_DEC_0;  // Conversion factor to 18 decimals
     uint256 private immutable TO_18_DEC_1;  // Conversion factor to 18 decimals
 
@@ -165,9 +194,11 @@ contract GUniLPOracle {
         wat  = _wat;
         uint256 dec0 = uint256(ERC20Like(GUNILike(_src).token0()).decimals());
         require(dec0 <= 18, "GUniLPOracle/token0-dec-gt-18");
+        UNIT_0 = 10 ** dec0;
         TO_18_DEC_0 = 10 ** (18 - dec0);
         uint256 dec1 = uint256(ERC20Like(GUNILike(_src).token1()).decimals());
         require(dec1 <= 18, "GUniLPOracle/token1-dec-gt-18");
+        UNIT_1 = 10 ** dec1;
         TO_18_DEC_1 = 10 ** (18 - dec1);
         orb0 = _orb0;
         orb1 = _orb1;
@@ -220,16 +251,16 @@ contract GUniLPOracle {
         require(p0 != 0, "GUniLPOracle/invalid-oracle-0-price");
         uint256 p1 = OracleLike(orb1).read();  // Query token1 price from oracle (WAD)
         require(p1 != 0, "GUniLPOracle/invalid-oracle-1-price");
-        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(p1 / TO_18_DEC_0, (1 << 136)) / (p0 / TO_18_DEC_1)) << 28);
+        uint160 sqrtPriceX96 = toUint160(sqrt(_mul(_mul(p0, UNIT_1), (1 << 96)) / (_mul(p1, UNIT_0))) << 48);
 
         // Get balances of the tokens in the pool
-        (uint256 b0, uint256 b1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
-        require(b0 > 0 || b1 > 0, "GUniLPOracle/invalid-balances");
+        (uint256 r0, uint256 r1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
+        require(r0 > 0 || r1 > 0, "GUniLPOracle/invalid-balances");
 
         // Add the total value of each token together and divide by the totalSupply to get the unit price
         uint256 preq = _add(
-            _mul(p0, _mul(b0, TO_18_DEC_0)),
-            _mul(p1, _mul(b1, TO_18_DEC_1))
+            _mul(p0, _mul(r0, TO_18_DEC_0)),
+            _mul(p1, _mul(r1, TO_18_DEC_1))
         ) / ERC20Like(src).totalSupply();
         require(preq < 2 ** 128, "GUniLPOracle/quote-overflow");
         quote = uint128(preq);  // WAD

@@ -3,7 +3,7 @@ pragma solidity =0.6.12;
 
 import "ds-test/test.sol";
 
-import "./GUniLPOracle.sol";
+import {GUniLPOracle,GUniLPOracleFactory} from "./GUniLPOracle.sol";
 
 interface Hevm {
     function warp(uint256) external;
@@ -14,11 +14,42 @@ interface Hevm {
 interface OSMLike {
     function bud(address) external returns (uint);
     function peek() external returns (bytes32, bool);
+    function kiss(address) external;
+    function poke() external;
 }
 
 interface UniPoolLike {
     function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool);
     function swap(address, bool, int256, uint160, bytes calldata) external;
+    function positions(bytes32) external view returns (uint128, uint256, uint256, uint128, uint128);
+}
+
+interface AuthLike {
+    function wards(address) external returns (uint256);
+}
+
+interface ERC20Like {
+    function decimals()                 external view returns (uint8);
+    function balanceOf(address)         external view returns (uint256);
+    function totalSupply()              external view returns (uint256);
+    function transfer(address, uint256) external;
+    function approve(address, uint256)  external;
+}
+
+interface GUNILike {
+    function token0()                               external view returns (address);
+    function token1()                               external view returns (address);
+    function getMintAmounts(uint256, uint256)       external view returns (uint256,uint256,uint256);
+    function getUnderlyingBalances()                external view returns (uint256,uint256);
+    function getUnderlyingBalancesAtPrice(uint160)  external view returns (uint256,uint256);
+    function getPositionID()                        external view returns (bytes32);
+    function pool()                                 external view returns (address);
+    function mint(uint256, address)                 external returns (uint256, uint256, uint128);
+    function burn(uint256, address)                 external returns (uint256, uint256, uint128);
+}
+
+interface OracleLike {
+    function read() external view returns (uint256);
 }
 
 contract GUniLPOracleTest is DSTest {
@@ -53,6 +84,40 @@ contract GUniLPOracleTest is DSTest {
             emit log_named_uint("    Actual", _a);
             fail();
         }
+    }
+
+    function giveAuthAccess (address _base, address target) internal {
+        AuthLike base = AuthLike(_base);
+
+        // Edge case - ward is already set
+        if (base.wards(target) == 1) return;
+
+        for (int i = 0; i < 100; i++) {
+            // Scan the storage for the ward storage slot
+            bytes32 prevValue = hevm.load(
+                address(base),
+                keccak256(abi.encode(target, uint256(i)))
+            );
+            hevm.store(
+                address(base),
+                keccak256(abi.encode(target, uint256(i))),
+                bytes32(uint256(1))
+            );
+            if (base.wards(target) == 1) {
+                // Found it
+                return;
+            } else {
+                // Keep going after restoring the original value
+                hevm.store(
+                    address(base),
+                    keccak256(abi.encode(target, uint256(i))),
+                    prevValue
+                );
+            }
+        }
+
+        // We have failed if we reach here
+        assertTrue(false);
     }
 
     function giveTokens(address token, uint256 amount) internal {
@@ -154,15 +219,21 @@ contract GUniLPOracleTest is DSTest {
     Hevm                 hevm;
     GUniLPOracleFactory  factory;
     GUniLPOracle         daiUsdcLPOracle;
+    GUniLPOracle         ethUsdcLPOracle;
 
     address constant DAI_USDC_GUNI_POOL = 0xAbDDAfB225e10B90D798bB8A886238Fb835e2053;
     address constant DAI_USDC_UNI_POOL  = 0x6c6Bc977E13Df9b0de53b251522280BB72383700;
+    address constant ETH_USDC_GUNI_POOL = 0xa6c49FD13E50a30C65E6C8480aADA132011D0613;
+    address constant ETH_USDC_UNI_POOL  = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640;
     address constant USDC_ORACLE        = 0x77b68899b99b686F415d074278a9a16b336085A0;
     address constant DAI_ORACLE         = 0x47c3dC029825Da43BE595E21fffD0b66FfcB7F6e;
+    address constant ETH_ORACLE         = 0x81FE72B5A8d1A857d176C3E7d5Bd2679A9B85763;
     address constant DAI                = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address constant USDC               = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address constant ETH                = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
-    bytes32 constant poolNameDAI       = "DAI-USDC-GUNI-LP";
+    bytes32 constant poolNameDAI        = "DAI-USDC-GUNI-LP";
+    bytes32 constant poolNameETH        = "ETH-USDC-GUNI-LP";
 
     function setUp() public {
         hevm = Hevm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
@@ -176,8 +247,32 @@ contract GUniLPOracleTest is DSTest {
             USDC_ORACLE)
         );
         daiUsdcLPOracle.kiss(address(this));
-
         assertEq(GUNILike(DAI_USDC_GUNI_POOL).pool(), DAI_USDC_UNI_POOL);
+
+        ethUsdcLPOracle = GUniLPOracle(factory.build(
+            address(this),
+            ETH_USDC_GUNI_POOL,
+            poolNameETH,
+            USDC_ORACLE,
+            ETH_ORACLE)
+        );
+        giveAuthAccess(ETH_ORACLE, address(this));
+        OSMLike(ETH_ORACLE).kiss(address(ethUsdcLPOracle));
+        OSMLike(ETH_ORACLE).kiss(address(this));
+        ethUsdcLPOracle.kiss(address(this));
+        assertEq(GUNILike(ETH_USDC_GUNI_POOL).pool(), ETH_USDC_UNI_POOL);
+    }
+
+    /// @notice Uniswap v3 callback fn, called back on pool.swap
+    function uniswapV3SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata /*data*/
+    ) external {
+        if (amount0Delta > 0)
+            ERC20Like(USDC).transfer(msg.sender, uint256(amount0Delta));
+        else if (amount1Delta > 0)
+            ERC20Like(ETH).transfer(msg.sender, uint256(amount1Delta));
     }
 
     ///////////////////////////////////////////////////////
@@ -197,9 +292,9 @@ contract GUniLPOracleTest is DSTest {
         assertTrue(address(oracle) != address(0));          // Verify oracle deployed successfully
         assertEq(oracle.wards(address(this)), 1);           // Verify caller is owner
         assertEq(oracle.wards(address(factory)), 0);        // Vérify factory is not owner
-        assertEq(oracle.src(), DAI_USDC_GUNI_POOL);           // Verify uni pool is source
-        assertEq(oracle.orb0(), DAI_ORACLE);               // Verify oracle configured correctly
-        assertEq(oracle.orb1(), USDC_ORACLE);                // Verify oracle configured correctly
+        assertEq(oracle.src(), DAI_USDC_GUNI_POOL);         // Verify uni pool is source
+        assertEq(oracle.orb0(), DAI_ORACLE);                // Verify oracle configured correctly
+        assertEq(oracle.orb1(), USDC_ORACLE);               // Verify oracle configured correctly
         assertEq(oracle.wat(), poolNameDAI);                // Verify name is set correctly
         assertEq(uint256(oracle.stopped()), 0);             // Verify contract is active
         assertTrue(factory.isOracle(address(oracle)));      // Verify factory recorded oracle
@@ -261,7 +356,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
     }
 
-    function test_calc_sqrt_price() public {
+    function test_calc_sqrts_match_dai() public {
         // Both these oracles should be hard coded to 1
         uint256 dec0 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token0()).decimals());
         uint256 dec1 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token1()).decimals());
@@ -269,18 +364,32 @@ contract GUniLPOracleTest is DSTest {
         assertEq(p0, 1e18);
         uint256 p1 = OracleLike(USDC_ORACLE).read();
         assertEq(p1, 1e18);
-        p0 /= 10 ** (18 - dec0);
-        p1 /= 10 ** (18 - dec1);
+        p0 *= 10 ** (18 - dec0);
+        p1 *= 10 ** (18 - dec1);
         
         // Check both square roots produce the same results
-        uint256 sqrtPriceX96_1 = sqrt1(mul(p1, (1 << 136)) / p0) << 28;
-        assertEq(sqrtPriceX96_1, 79228162514264115904512);
-        uint256 sqrtPriceX96_2 = sqrt2(mul(p1, (1 << 136)) / p0) << 28;
-        assertEq(sqrtPriceX96_2, 79228162514264115904512);
+        uint256 sqrtPriceX96_1 = sqrt1(mul(p0, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96_1, 79228162314232456544256);
+        uint256 sqrtPriceX96_2 = sqrt2(mul(p0, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96_2, 79228162314232456544256);
+    }
 
+    function test_calc_sqrt_price_dai() public {
+        // Both these oracles should be hard coded to 1
+        uint256 dec0 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token0()).decimals());
+        uint256 dec1 = uint256(ERC20Like(GUNILike(daiUsdcLPOracle.src()).token1()).decimals());
+        uint256 p0 = OracleLike(DAI_ORACLE).read();
+        assertEq(p0, 1e18);
+        uint256 p1 = OracleLike(USDC_ORACLE).read();
+        assertEq(p1, 1e18);
+        p0 *= 10 ** (18 - dec0);
+        p1 *= 10 ** (18 - dec1);
+        
         // Check that the price roughly matches the Uniswap pool price during normal conditions
+        uint256 sqrtPriceX96 = sqrt2(mul(p0, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96, 79228162314232456544256);
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(DAI_USDC_UNI_POOL).slot0();
-        assertEqApprox(sqrtPriceX96_uni, 79228162514264115904512, 10);
+        assertEqApprox(sqrtPriceX96_uni, sqrtPriceX96, 10);
     }
 
     function test_seek_dai() public {
@@ -298,84 +407,183 @@ contract GUniLPOracleTest is DSTest {
         assertEqApprox(lpTokenPrice, expectedPrice, 10);    
     }
 
-    /// @notice Uniswap v3 callback fn, called back on pool.swap
-    function uniswapV3SwapCallback(
-        int256 amount0Delta,
-        int256 amount1Delta,
-        bytes calldata /*data*/
-    ) external {
-        if (amount0Delta > 0)
-            ERC20Like(DAI).transfer(msg.sender, uint256(amount0Delta));
-        else if (amount1Delta > 0)
-            ERC20Like(USDC).transfer(msg.sender, uint256(amount1Delta));
+    function test_calc_sqrts_match_eth() public {
+        hevm.warp(now + 1 hours);
+        OSMLike(ETH_ORACLE).poke();
+        ethUsdcLPOracle.poke();
+
+        // Both these oracles should be hard coded to 1
+        uint256 p0 = OracleLike(USDC_ORACLE).read();
+        assertEq(p0, 1e18);
+        uint256 p1 = OracleLike(ETH_ORACLE).read();
+        assertGt(p1, 0);
+        
+        // Check both square roots produce the same results
+        uint256 sqrtPriceX96_1 = sqrt1(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
+        uint256 sqrtPriceX96_2 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
+        assertEq(sqrtPriceX96_2, sqrtPriceX96_1);
     }
 
-    function test_flash_loan_protection_dai_to_usdc() public {
-        uint256 balOrig = ERC20Like(USDC).balanceOf(DAI_USDC_UNI_POOL);
-        assertGt(balOrig, 0);
-
-        daiUsdcLPOracle.poke();
+    function test_calc_sqrt_price_eth() public {
         hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        uint128 lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPriceOrig = uint256(lpTokenPrice128);
-        (uint256 balDai, uint256 balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePriceOrig = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
+        OSMLike(ETH_ORACLE).poke();
+        ethUsdcLPOracle.poke();
 
-        // Give enough tokens to totally skew the reserves to almost all USDC
-        uint256 amount = 10 * ERC20Like(DAI).balanceOf(DAI_USDC_UNI_POOL);
-        giveTokens(DAI, amount);
-        UniPoolLike(DAI_USDC_UNI_POOL).swap(address(this), true, int256(amount), 69260490254391874038245, "");
-        assertLt(ERC20Like(USDC).balanceOf(DAI_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
+        // Both these oracles should be hard coded to 1
+        uint256 p0 = OracleLike(USDC_ORACLE).read();
+        assertEq(p0, 1e18);
+        uint256 p1 = OracleLike(ETH_ORACLE).read();
+        assertGt(p1, 0);
+        
+        // Check that the price roughly matches the Uniswap pool price during normal conditions
+        uint256 sqrtPriceX96 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
+        (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(ETH_USDC_UNI_POOL).slot0();
+        assertEqApprox(sqrtPriceX96, sqrtPriceX96_uni, 100);      // We've used the most recent Medanizer price, but there may still be some deviation from Uniswap
 
+        // Check that the reserves roughly match with Uniswap spot and our sqrtPrice
+        (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96));
+        (uint256 r0_2, uint256 r1_2) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        assertEqApprox(r0_2, r0_1, 300);
+        assertEqApprox(r1_2, r1_1, 300);
+    }
+
+    function test_seek_eth() public {
+        ethUsdcLPOracle.poke();
         hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
+        ethUsdcLPOracle.poke();
+        uint128 lpTokenPrice128 = uint128(uint256(ethUsdcLPOracle.read()));
         assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
         uint256 lpTokenPrice = uint256(lpTokenPrice128);
-        (balDai, balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
+        // Price should be the value of all the tokens combined divided by totalSupply()
+        (uint256 balUsdc, uint256 balEth) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        uint256 p1 = OracleLike(ETH_ORACLE).read();
+        uint256 expectedPrice = (balEth * p1 + balUsdc * 1e12 * 1e18) / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
+        // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
+        // Allow for a 0.1% discrepancy
+        assertEqApprox(lpTokenPrice, expectedPrice, 10);    
+    }
 
-        assertEqApprox(naivePrice, naivePriceOrig, 10);         // Due to range being so tight this won't deviate much (this won't be the case for larger ranges)
+    // This will massively skew the ETH-USDC pool in Uniswap to confirm our Oracle is unaffected
+    function test_flash_loan_protection() public {
+        uint256 balOrig = ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL);
+        assertGt(balOrig, 0);
+
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint128 lpTokenPrice128 = uint128(uint256(ethUsdcLPOracle.read()));
+        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
+        uint256 lpTokenPriceOrig = uint256(lpTokenPrice128);
+        (uint256 balUsdc, uint256 balEth) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        uint256 naivePriceOrig = (balEth + balUsdc * 1e12) * WAD / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
+
+        // Give enough tokens to totally skew the reserves
+        uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
+        giveTokens(ETH, amount);
+        UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
+
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        lpTokenPrice128 = uint128(uint256(ethUsdcLPOracle.read()));
+        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
+        uint256 lpTokenPrice = uint256(lpTokenPrice128);
+        (balUsdc, balEth) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
+        uint256 naivePrice = (balEth + balUsdc * 1e12) * WAD / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
+
+        assertNotEqApprox(naivePrice, naivePriceOrig, 5000);    // This should be off by a lot (above 50% deviation)
         assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
     }
 
-    function test_flash_loan_protection_usdc_to_dai() public {
-        uint256 balOrig = ERC20Like(DAI).balanceOf(DAI_USDC_UNI_POOL);
-        assertGt(balOrig, 0);
-
-        daiUsdcLPOracle.poke();
+    function test_zero_totalSupply() public {
+        ethUsdcLPOracle.poke();
         hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        uint128 lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPriceOrig = uint256(lpTokenPrice128);
-        (uint256 balDai, uint256 balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePriceOrig = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPriceOrig = uint256(ethUsdcLPOracle.read());
 
-        // Give enough tokens to totally skew the reserves to almost all USDC
-        uint256 amount = 10 * ERC20Like(USDC).balanceOf(DAI_USDC_UNI_POOL);
-        giveTokens(USDC, amount);
-        UniPoolLike(DAI_USDC_UNI_POOL).swap(address(this), false, int256(amount), 89260490254391874038245, "");
-        assertLt(ERC20Like(DAI).balanceOf(DAI_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New DAI balance should be less than 1% of original balance
+        // Give ourselves all the tokens available
+        uint256 lpTokens = ERC20Like(ETH_USDC_GUNI_POOL).totalSupply();
+        (uint256 usdcBal, uint256 ethBal) = GUNILike(ETH_USDC_GUNI_POOL).getUnderlyingBalances();
+        giveTokens(ETH_USDC_GUNI_POOL, lpTokens);
+
+        // Burn all tokens
+        (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens, address(this));
+
+        // Should all underlying balances
+        assertEq(amount0, usdcBal);
+        assertEq(amount1, ethBal);
 
         hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        hevm.warp(now + 1 hours);
-        daiUsdcLPOracle.poke();
-        lpTokenPrice128 = uint128(uint256(daiUsdcLPOracle.read()));
-        assertTrue(lpTokenPrice128 > 0);                                          // Verify price was set
-        uint256 lpTokenPrice = uint256(lpTokenPrice128);
-        (balDai, balUsdc) = GUNILike(daiUsdcLPOracle.src()).getUnderlyingBalances();
-        uint256 naivePrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
+        // This poke should fail as both balances are zero
+        try ethUsdcLPOracle.poke() {
+            assertTrue(false);
+        } catch {
+        }
+        uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
 
-        assertNotEqApprox(naivePrice, naivePriceOrig, 10);      // Due to the lop-sidedness of the current DAI/USDC price this will actually deviate by a bit more than the other way
-        assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 10);     // This should not deviate by much as it is not using the Uniswap pool price to calculate reserves
+        assertEq(lpTokenPrice, lpTokenPriceOrig);
     }
 
-    // TODO add tests for non-stablecoin oracles when they become available
+    // Verify Oracle price is unaffected by more complex mint/swap/burn sequence
+    function test_mint_swap_burn() public {
+        ERC20Like(ETH).approve(address(ETH_USDC_GUNI_POOL), type(uint256).max);
+        ERC20Like(USDC).approve(address(ETH_USDC_GUNI_POOL), type(uint256).max);
+
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPrice1 = uint256(ethUsdcLPOracle.read());
+        (uint256 usdcBalOrig, uint256 ethBalOrig) = GUNILike(ETH_USDC_GUNI_POOL).getUnderlyingBalances();
+        (uint128 liquidityOrig, , , , ) = UniPoolLike(ETH_USDC_UNI_POOL).positions(GUNILike(ETH_USDC_GUNI_POOL).getPositionID());
+
+        // Mint a bunch of tokens
+        giveTokens(USDC, 100 * usdcBalOrig);
+        giveTokens(ETH, 100 * ethBalOrig);
+        (,, uint256 liquidityToMint) = GUNILike(ETH_USDC_GUNI_POOL).getMintAmounts(100 * usdcBalOrig, 100 * ethBalOrig);
+        GUNILike(ETH_USDC_GUNI_POOL).mint(liquidityToMint, address(this));
+
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPrice2 = uint256(ethUsdcLPOracle.read());
+        assertEq(lpTokenPrice2, lpTokenPrice1);
+
+        // Give enough tokens to totally skew the reserves
+        uint256 balOrig = ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL);
+        assertGt(balOrig, 0);
+        uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
+        giveTokens(ETH, amount);
+        UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
+
+        // Burn all tokens we previously minted
+        GUNILike(ETH_USDC_GUNI_POOL).burn(ERC20Like(ETH_USDC_GUNI_POOL).balanceOf(address(this)), address(this));
+
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPrice3 = uint256(ethUsdcLPOracle.read());
+        assertEqApprox(lpTokenPrice3, lpTokenPrice1, 10);
+
+        // Verify user can't steal the liquidity of previous users
+        (uint128 liquidityEnd, , , , ) = UniPoolLike(ETH_USDC_UNI_POOL).positions(GUNILike(ETH_USDC_GUNI_POOL).getPositionID());
+        assertGt(uint256(liquidityEnd), uint256(liquidityOrig));
+    }
+
+    function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
+        uint256 MAX_PRICE = 1e12 * WAD;     // Max underlying asset Oracle price supported is $1 Trillion USD
+        uint256 MAX_DEC = 18;
+
+        p0 %= MAX_PRICE;
+        p1%= MAX_PRICE;
+        dec0 %= MAX_DEC;
+        dec1 %= MAX_DEC;
+
+        uint256 UNIT_0 = 10 ** dec0;
+        uint256 UNIT_1 = 10 ** dec1;
+
+        uint256 sqrtPriceX96 = sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48;
+        assertLt(sqrtPriceX96, 1 << 160);
+    }
 
 }
