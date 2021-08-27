@@ -511,7 +511,6 @@ contract GUniLPOracleTest is DSTest {
         // Burn all tokens
         (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens, address(this));
 
-        // Should all underlying balances
         assertEq(amount0, usdcBal);
         assertEq(amount1, ethBal);
 
@@ -521,6 +520,30 @@ contract GUniLPOracleTest is DSTest {
             assertTrue(false);
         } catch {
         }
+        uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
+
+        assertEq(lpTokenPrice, lpTokenPriceOrig);
+    }
+
+    function test_near_zero_totalSupply() public {
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPriceOrig = uint256(ethUsdcLPOracle.read());
+
+        // Give ourselves nearly all the tokens available
+        uint256 lpTokens = ERC20Like(ETH_USDC_GUNI_POOL).totalSupply();
+        (uint256 usdcBal, uint256 ethBal) = GUNILike(ETH_USDC_GUNI_POOL).getUnderlyingBalances();
+        giveTokens(ETH_USDC_GUNI_POOL, lpTokens);
+
+        // Burn almost all tokens
+        (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens - 1, address(this));
+
+        assertEqApprox(amount0, usdcBal, 1);
+        assertEqApprox(amount1, ethBal, 1);
+
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
         uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
 
         assertEq(lpTokenPrice, lpTokenPriceOrig);
