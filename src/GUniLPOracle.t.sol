@@ -586,4 +586,25 @@ contract GUniLPOracleTest is DSTest {
         assertLt(sqrtPriceX96, 1 << 160);
     }
 
+    function test_sqrt_price_ratio_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
+        uint256 MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
+        uint256 MAX_DEC = 18;
+
+        // https://github.com/Uniswap/uniswap-v3-core/blob/main/contracts/libraries/TickMath.sol
+        uint160 MIN_SQRT_RATIO = 4295128739;
+        uint160 MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
+
+        p0   %= MAX_PRICE;
+        p1   %= MAX_PRICE;
+        dec0 %= MAX_DEC;
+        dec1 %= MAX_DEC;
+
+        uint256 UNIT_0 = 10 ** dec0;
+        uint256 UNIT_1 = 10 ** dec1;
+
+        uint160 sqrtPriceX96 = uint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
+
+        // second inequality must be < because the price can never reach the price at the max tick
+        assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
+    }
 }
