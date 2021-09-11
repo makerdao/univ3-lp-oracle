@@ -570,10 +570,16 @@ contract GUniLPOracleTest is DSTest {
         assertGt(uint256(liquidityEnd), uint256(liquidityOrig));
     }
 
-    function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
-        uint256 MAX_PRICE = 1e12 * WAD;     // Max underlying asset Oracle price supported is $1 Trillion USD
-        uint256 MAX_DEC = 18;
+    // --- Fuzz ---
+    uint256 MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
+    uint256 MIN_PRICE = 10**16;       // $0.01 USD
+    uint256 MAX_DEC = 18;
 
+    // https://github.com/Uniswap/uniswap-v3-core/blob/main/contracts/libraries/TickMath.sol
+    uint160 MIN_SQRT_RATIO = 4295128739;
+    uint160 MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
+
+    function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
         p0 %= MAX_PRICE;
         p1%= MAX_PRICE;
         dec0 %= MAX_DEC;
@@ -587,17 +593,16 @@ contract GUniLPOracleTest is DSTest {
     }
 
     function test_sqrt_price_ratio_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
-        uint256 MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
-        uint256 MAX_DEC = 18;
-
-        // https://github.com/Uniswap/uniswap-v3-core/blob/main/contracts/libraries/TickMath.sol
-        uint160 MIN_SQRT_RATIO = 4295128739;
-        uint160 MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
-
-        p0   %= MAX_PRICE;
-        p1   %= MAX_PRICE;
+        p0 %= MAX_PRICE;
+        if (p0 < WAD) p0 = MIN_PRICE;
+        if (p0 > MAX_PRICE) p0 = MAX_PRICE;
+        p1 %= MAX_PRICE;
+        if (p1 < WAD) p1 = MIN_PRICE;
+        if (p1 > MAX_PRICE) p1 = MAX_PRICE;
         dec0 %= MAX_DEC;
+        if (dec0 > MAX_DEC) dec0 = MAX_DEC;
         dec1 %= MAX_DEC;
+        if (dec1 > MAX_DEC) dec1 = MAX_DEC;
 
         uint256 UNIT_0 = 10 ** dec0;
         uint256 UNIT_1 = 10 ** dec1;
