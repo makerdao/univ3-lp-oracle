@@ -71,5 +71,5 @@ uint160 sqrtPriceX96 = sqrt((p0 * 10^UNITS_1 * 2^96) / (p1 * 10^UNITS_0)) * 2^48
    sqrt((p0 * 10^18 * 10^29) / p1) < 10^33                            // ^2
    (p0 * 10^47) / p1 < 10^66
    (p0 / p1) < 10^19                                                  // p0 = token0_usd_price * 10^18, p1 = token1_usd_price * 10^18
-   token0_usd_price / token1_usd_price < 10^17
+   token0_usd_price / token1_usd_price < 10^19
    
