@@ -581,7 +581,7 @@ contract GUniLPOracleTest is DSTest {
 
     function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
         p0 %= MAX_PRICE;
-        p1%= MAX_PRICE;
+        p1 %= MAX_PRICE;
         dec0 %= MAX_DEC;
         dec1 %= MAX_DEC;
 
