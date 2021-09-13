@@ -595,14 +595,10 @@ contract GUniLPOracleTest is DSTest {
     function test_sqrt_price_ratio_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
         p0 %= MAX_PRICE;
         if (p0 < WAD) p0 = MIN_PRICE;
-        if (p0 > MAX_PRICE) p0 = MAX_PRICE;
         p1 %= MAX_PRICE;
         if (p1 < WAD) p1 = MIN_PRICE;
-        if (p1 > MAX_PRICE) p1 = MAX_PRICE;
         dec0 %= MAX_DEC;
-        if (dec0 > MAX_DEC) dec0 = MAX_DEC;
         dec1 %= MAX_DEC;
-        if (dec1 > MAX_DEC) dec1 = MAX_DEC;
 
         uint256 UNIT_0 = 10 ** dec0;
         uint256 UNIT_1 = 10 ** dec1;
