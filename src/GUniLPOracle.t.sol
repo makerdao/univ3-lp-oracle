@@ -176,6 +176,9 @@ contract GUniLPOracleTest is DSTest {
     function wdiv(uint x, uint y) internal pure returns (uint z) {
         z = add(mul(x, WAD), y / 2) / y;
     }
+    function toUint160(uint256 x) internal pure returns (uint160 z) {
+        require((z = uint160(x)) == x, "GUniLPOracle/uint160-overflow");
+    }
 
     // babylonian method (https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method)
     function sqrt1(uint y) internal pure returns (uint z) {
@@ -603,7 +606,7 @@ contract GUniLPOracleTest is DSTest {
         uint256 UNIT_0 = 10 ** dec0;
         uint256 UNIT_1 = 10 ** dec1;
 
-        uint160 sqrtPriceX96 = uint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
+        uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
 
         // second inequality must be < because the price can never reach the price at the max tick
         assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
