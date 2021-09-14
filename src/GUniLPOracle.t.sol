@@ -574,13 +574,13 @@ contract GUniLPOracleTest is DSTest {
     }
 
     // --- Fuzz ---
-    uint256 MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
-    uint256 MIN_PRICE = 10**16;       // $0.01 USD
-    uint256 MAX_DEC = 18;
+    uint256 constant MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
+    uint256 constant MIN_PRICE = 10**16;       // $0.01 USD
+    uint256 constant MAX_DEC = 18;
 
     // https://github.com/Uniswap/uniswap-v3-core/blob/main/contracts/libraries/TickMath.sol
-    uint160 MIN_SQRT_RATIO = 4295128739;
-    uint160 MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
+    uint160 constant MIN_SQRT_RATIO = 4295128739;
+    uint160 constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
 
     function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
         p0 %= MAX_PRICE;
@@ -605,6 +605,28 @@ contract GUniLPOracleTest is DSTest {
 
         uint256 UNIT_0 = 10 ** dec0;
         uint256 UNIT_1 = 10 ** dec1;
+
+        uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
+
+        // second inequality must be < because the price can never reach the price at the max tick
+        assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
+    }
+
+    // --- GUNI DAI-USDC ---
+    // https://forum.makerdao.com/t/guni-dai-usdc-collateral-onboarding-oracle-assessment-mip10c3-sp41/10268
+    uint256 constant MAX_PRICE_STABLE = 10014 * 10**14; // 1.0014 USD
+    uint256 constant MIN_PRICE_STABLE = 9994  * 10**14; // 0.9994 USD
+    uint256 constant DEC0_DAI  = 18;
+    uint256 constant DEC1_USDC = 6;
+
+    function test_sqrt_price_ratio_dai_usdc_fuzz(uint256 p0, uint256 p1) public {
+        p0 %= MAX_PRICE_STABLE;
+        if (p0 < MIN_PRICE_STABLE) p0 = MIN_PRICE_STABLE;
+        p1 %= MAX_PRICE_STABLE;
+        if (p1 < MIN_PRICE_STABLE) p1 = MIN_PRICE_STABLE;
+
+        uint256 UNIT_0 = 10 ** DEC0_DAI;
+        uint256 UNIT_1 = 10 ** DEC1_USDC;
 
         uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
 
