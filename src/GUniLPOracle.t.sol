@@ -443,8 +443,8 @@ contract GUniLPOracleTest is DSTest {
         // Check that the reserves roughly match with Uniswap spot and our sqrtPrice
         (uint256 r0_1, uint256 r1_1) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalancesAtPrice(uint160(sqrtPriceX96));
         (uint256 r0_2, uint256 r1_2) = GUNILike(ethUsdcLPOracle.src()).getUnderlyingBalances();
-        assertEqApprox(r0_2, r0_1, 300);
-        assertEqApprox(r1_2, r1_1, 300);
+        assertEqApprox(r0_2, r0_1, 800);
+        assertEqApprox(r1_2, r1_1, 800);
     }
 
     function test_seek_eth() public {
@@ -481,7 +481,7 @@ contract GUniLPOracleTest is DSTest {
         uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
         giveTokens(ETH, amount);
         UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
-        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 500);    // New USDC balance should be less than 5% of original balance
 
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
@@ -511,7 +511,6 @@ contract GUniLPOracleTest is DSTest {
         // Burn all tokens
         (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens, address(this));
 
-        // Should all underlying balances
         assertEq(amount0, usdcBal);
         assertEq(amount1, ethBal);
 
@@ -524,6 +523,32 @@ contract GUniLPOracleTest is DSTest {
         uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
 
         assertEq(lpTokenPrice, lpTokenPriceOrig);
+    }
+
+    function test_near_zero_totalSupply() public {
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPriceOrig = uint256(ethUsdcLPOracle.read());
+
+        // Give ourselves nearly all the tokens available
+        uint256 lpTokens = ERC20Like(ETH_USDC_GUNI_POOL).totalSupply();
+        (uint256 usdcBal, uint256 ethBal) = GUNILike(ETH_USDC_GUNI_POOL).getUnderlyingBalances();
+        giveTokens(ETH_USDC_GUNI_POOL, lpTokens);
+
+        // Burn almost all tokens
+        (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens - 1e9, address(this));
+
+        assertEqApprox(amount0, usdcBal, 1);
+        assertEqApprox(amount1, ethBal, 1);
+
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
+        uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
+
+        assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 1);
     }
 
     // Verify Oracle price is unaffected by more complex mint/swap/burn sequence
@@ -546,8 +571,10 @@ contract GUniLPOracleTest is DSTest {
 
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
         uint256 lpTokenPrice2 = uint256(ethUsdcLPOracle.read());
-        assertEq(lpTokenPrice2, lpTokenPrice1);
+        assertEqApprox(lpTokenPrice2, lpTokenPrice1, 1);
 
         // Give enough tokens to totally skew the reserves
         uint256 balOrig = ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL);
@@ -555,15 +582,17 @@ contract GUniLPOracleTest is DSTest {
         uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
         giveTokens(ETH, amount);
         UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
-        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 100);    // New USDC balance should be less than 1% of original balance
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 500);    // New USDC balance should be less than 5% of original balance
 
         // Burn all tokens we previously minted
         GUNILike(ETH_USDC_GUNI_POOL).burn(ERC20Like(ETH_USDC_GUNI_POOL).balanceOf(address(this)), address(this));
 
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
         uint256 lpTokenPrice3 = uint256(ethUsdcLPOracle.read());
-        assertEqApprox(lpTokenPrice3, lpTokenPrice1, 10);
+        assertEqApprox(lpTokenPrice3, lpTokenPrice1, 100);
 
         // Verify user can't steal the liquidity of previous users
         (uint128 liquidityEnd, , , , ) = UniPoolLike(ETH_USDC_UNI_POOL).positions(GUNILike(ETH_USDC_GUNI_POOL).getPositionID());
