@@ -537,16 +537,18 @@ contract GUniLPOracleTest is DSTest {
         giveTokens(ETH_USDC_GUNI_POOL, lpTokens);
 
         // Burn almost all tokens
-        (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens - 1, address(this));
+        (uint256 amount0, uint256 amount1, ) = GUNILike(ETH_USDC_GUNI_POOL).burn(lpTokens - 1e9, address(this));
 
         assertEqApprox(amount0, usdcBal, 1);
         assertEqApprox(amount1, ethBal, 1);
 
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
         uint256 lpTokenPrice = uint256(ethUsdcLPOracle.read());
 
-        assertEq(lpTokenPrice, lpTokenPriceOrig);
+        assertEqApprox(lpTokenPrice, lpTokenPriceOrig, 1);
     }
 
     // Verify Oracle price is unaffected by more complex mint/swap/burn sequence
