@@ -481,7 +481,7 @@ contract GUniLPOracleTest is DSTest {
         uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
         giveTokens(ETH, amount);
         UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
-        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 500);    // New USDC balance should be less than 1% of original balance
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 500);    // New USDC balance should be less than 5% of original balance
 
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
@@ -571,8 +571,10 @@ contract GUniLPOracleTest is DSTest {
 
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
         uint256 lpTokenPrice2 = uint256(ethUsdcLPOracle.read());
-        assertEq(lpTokenPrice2, lpTokenPrice1);
+        assertEqApprox(lpTokenPrice2, lpTokenPrice1, 1);
 
         // Give enough tokens to totally skew the reserves
         uint256 balOrig = ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL);
@@ -580,11 +582,13 @@ contract GUniLPOracleTest is DSTest {
         uint256 amount = 10 * ERC20Like(ETH).balanceOf(ETH_USDC_UNI_POOL);
         giveTokens(ETH, amount);
         UniPoolLike(ETH_USDC_UNI_POOL).swap(address(this), false, int256(amount), 13714534615519655739241256778826810, "");
-        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 500);    // New USDC balance should be less than 1% of original balance
+        assertLt(ERC20Like(USDC).balanceOf(ETH_USDC_UNI_POOL) * 1e4 / balOrig, 500);    // New USDC balance should be less than 5% of original balance
 
         // Burn all tokens we previously minted
         GUNILike(ETH_USDC_GUNI_POOL).burn(ERC20Like(ETH_USDC_GUNI_POOL).balanceOf(address(this)), address(this));
 
+        hevm.warp(now + 1 hours);
+        ethUsdcLPOracle.poke();
         hevm.warp(now + 1 hours);
         ethUsdcLPOracle.poke();
         uint256 lpTokenPrice3 = uint256(ethUsdcLPOracle.read());
