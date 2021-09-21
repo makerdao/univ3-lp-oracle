@@ -367,7 +367,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(p1, 1e18);
         p0 *= 10 ** (18 - dec0);
         p1 *= 10 ** (18 - dec1);
-        
+
         // Check both square roots produce the same results
         uint256 sqrtPriceX96_1 = sqrt1(mul(p0, (1 << 96)) / p1) << 48;
         assertEq(sqrtPriceX96_1, 79228162314232456544256);
@@ -385,7 +385,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(p1, 1e18);
         p0 *= 10 ** (18 - dec0);
         p1 *= 10 ** (18 - dec1);
-        
+
         // Check that the price roughly matches the Uniswap pool price during normal conditions
         uint256 sqrtPriceX96 = sqrt2(mul(p0, (1 << 96)) / p1) << 48;
         assertEq(sqrtPriceX96, 79228162314232456544256);
@@ -405,7 +405,7 @@ contract GUniLPOracleTest is DSTest {
         uint256 expectedPrice = (balDai + balUsdc * 1e12) * WAD / ERC20Like(daiUsdcLPOracle.src()).totalSupply();
         // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
         // Allow for a 0.1% discrepancy
-        assertEqApprox(lpTokenPrice, expectedPrice, 10);    
+        assertEqApprox(lpTokenPrice, expectedPrice, 10);
     }
 
     function test_calc_sqrts_match_eth() public {
@@ -418,7 +418,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(p0, 1e18);
         uint256 p1 = OracleLike(ETH_ORACLE).read();
         assertGt(p1, 0);
-        
+
         // Check both square roots produce the same results
         uint256 sqrtPriceX96_1 = sqrt1(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
         uint256 sqrtPriceX96_2 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
@@ -435,7 +435,7 @@ contract GUniLPOracleTest is DSTest {
         assertEq(p0, 1e18);
         uint256 p1 = OracleLike(ETH_ORACLE).read();
         assertGt(p1, 0);
-        
+
         // Check that the price roughly matches the Uniswap pool price during normal conditions
         uint256 sqrtPriceX96 = sqrt2(mul(p0 * 1e12, (1 << 96)) / p1) << 48;
         (uint256 sqrtPriceX96_uni,,,,,,) = UniPoolLike(ETH_USDC_UNI_POOL).slot0();
@@ -461,7 +461,7 @@ contract GUniLPOracleTest is DSTest {
         uint256 expectedPrice = (balEth * p1 + balUsdc * 1e12 * 1e18) / ERC20Like(ethUsdcLPOracle.src()).totalSupply();
         // Price is slightly off due to difference between Uniswap spot price and the Maker oracles
         // Allow for a 0.1% discrepancy
-        assertEqApprox(lpTokenPrice, expectedPrice, 10);    
+        assertEqApprox(lpTokenPrice, expectedPrice, 10);
     }
 
     // This will massively skew the ETH-USDC pool in Uniswap to confirm our Oracle is unaffected
@@ -614,6 +614,58 @@ contract GUniLPOracleTest is DSTest {
 
         uint256 sqrtPriceX96 = sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48;
         assertLt(sqrtPriceX96, 1 << 160);
+    }
+
+    // This test will fail if the value of `val` at peek does not match memory slot 0x3
+    function testCurSlot0x3() public {
+        ethUsdcLPOracle.poke();                                       // Poke oracle
+        hevm.warp(add(ethUsdcLPOracle.zzz(), ethUsdcLPOracle.hop())); // Time travel into the future
+        ethUsdcLPOracle.poke();                                       // Poke oracle again
+        ethUsdcLPOracle.kiss(address(this));                          // Whitelist caller
+        (bytes32 val, bool has) = ethUsdcLPOracle.peek();             // Peek oracle price without caller being whitelisted
+        assertTrue(has);                                              // Verify oracle has value
+        assertTrue(val != bytes32(0));                                // Verify peep returned valid value
+
+        // Load memory slot 0x3
+        // Keeps `cur` slot parity with OSMs
+        bytes32 curPacked = hevm.load(address(ethUsdcLPOracle), bytes32(uint256(3)));
+
+        bytes16 memhas;
+        bytes16 memcur;
+        assembly {
+            memhas := curPacked
+            memcur := shl(128, curPacked)
+        }
+
+        assertTrue(uint256(uint128(memcur)) > 0);          // Assert nxt has value
+        assertEq(uint256(val), uint256(uint128(memcur)));  // Assert slot value == cur
+        assertEq(uint256(uint128(memhas)), 1);             // Assert slot has == 1
+    }
+
+    // This test will fail if the value of `val` at peep does not match memory slot 0x4
+    function testNxtSlot0x4() public {
+        ethUsdcLPOracle.poke();                                       // Poke oracle
+        hevm.warp(add(ethUsdcLPOracle.zzz(), ethUsdcLPOracle.hop())); // Time travel into the future
+        ethUsdcLPOracle.poke();                                       // Poke oracle again
+        ethUsdcLPOracle.kiss(address(this));                          // Whitelist caller
+        (bytes32 val, bool has) = ethUsdcLPOracle.peep();             // Peep oracle price without caller being whitelisted
+        assertTrue(has);                                              // Verify oracle has value
+        assertTrue(val != bytes32(0));                                // Verify peep returned valid value
+
+        // Load memory slot 0x4
+        // Keeps `nxt` slot parity with OSMs
+        bytes32 nxtPacked = hevm.load(address(ethUsdcLPOracle), bytes32(uint256(4)));
+
+        bytes16 memhas;
+        bytes16 memnxt;
+        assembly {
+            memhas := nxtPacked
+            memnxt := shl(128, nxtPacked)
+        }
+
+        assertTrue(uint256(uint128(memnxt)) > 0);          // Assert nxt has value
+        assertEq(uint256(val), uint256(uint128(memnxt)));  // Assert slot value == nxt
+        assertEq(uint256(uint128(memhas)), 1);             // Assert slot has == 1
     }
 
 }
