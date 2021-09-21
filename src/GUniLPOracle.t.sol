@@ -575,7 +575,7 @@ contract GUniLPOracleTest is DSTest {
 
     // --- Fuzz ---
     uint256 constant MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
-    uint256 constant MIN_PRICE = 10**16;       // $0.01 USD
+    uint256 constant MIN_PRICE = 10**14;       // $0.0001 USD
     uint256 constant MAX_DEC = 18;
 
     // https://github.com/Uniswap/uniswap-v3-core/blob/main/contracts/libraries/TickMath.sol
