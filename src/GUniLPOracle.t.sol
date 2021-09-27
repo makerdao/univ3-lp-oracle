@@ -597,23 +597,6 @@ contract GUniLPOracleTest is DSTest {
         assertLt(sqrtPriceX96, 1 << 160);
     }
 
-    function test_sqrt_price_ratio_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
-        p0 %= MAX_PRICE;
-        if (p0 < MIN_PRICE) p0 = MIN_PRICE;
-        p1 %= MAX_PRICE;
-        if (p1 < MIN_PRICE) p1 = MIN_PRICE;
-        dec0 %= MAX_DEC;
-        dec1 %= MAX_DEC;
-
-        uint256 UNIT_0 = 10 ** dec0;
-        uint256 UNIT_1 = 10 ** dec1;
-
-        uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
-
-        // second inequality must be < because the price can never reach the price at the max tick
-        assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
-    }
-
     // --- GUNI DAI-USDC ---
     // https://forum.makerdao.com/t/guni-dai-usdc-collateral-onboarding-oracle-assessment-mip10c3-sp41/10268
     uint256 constant MAX_PRICE_STABLE = 10014 * 10**14; // 1.0014 USD
@@ -628,6 +611,28 @@ contract GUniLPOracleTest is DSTest {
         if (p1 < MIN_PRICE_STABLE) p1 = MIN_PRICE_STABLE;
 
         uint256 UNIT_0 = 10 ** DEC0_DAI;
+        uint256 UNIT_1 = 10 ** DEC1_USDC;
+
+        uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
+
+        // second inequality must be < because the price can never reach the price at the max tick
+        assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
+    }
+
+    // --- GUNI ETH-USDC ---
+    uint256 constant MAX_PRICE_ETH  = MAX_PRICE;         // 1 Trilion USD
+    uint256 constant MIN_PRICE_ETH  = WAD;               // 1 USD
+    uint256 constant MAX_PRICE_USDC = MAX_PRICE_STABLE;  // 1.0014 USD
+    uint256 constant MIN_PRICE_USDC = MIN_PRICE_STABLE;  // 0.9994 USD
+    uint256 constant DEC0_ETH = 18;
+
+    function test_sqrt_price_ratio_eth_usdc_fuzz(uint256 p0, uint256 p1) public {
+        p0 %= MAX_PRICE_ETH;
+        if (p0 < MIN_PRICE_ETH) p0 = MIN_PRICE_ETH;
+        p1 %= MAX_PRICE_USDC;
+        if (p1 < MIN_PRICE_USDC) p1 = MIN_PRICE_USDC;
+
+        uint256 UNIT_0 = 10 ** DEC0_ETH;
         uint256 UNIT_1 = 10 ** DEC1_USDC;
 
         uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
