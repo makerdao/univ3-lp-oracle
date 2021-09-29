@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 /// GUniLPOracle.sol
 
@@ -256,12 +256,14 @@ contract GUniLPOracle {
         // Get balances of the tokens in the pool
         (uint256 r0, uint256 r1) = GUNILike(src).getUnderlyingBalancesAtPrice(sqrtPriceX96);
         require(r0 > 0 || r1 > 0, "GUniLPOracle/invalid-balances");
+        uint256 totalSupply = ERC20Like(src).totalSupply();
+        require(totalSupply >= 1e9, "GUniLPOracle/total-supply-too-small"); // Protect against precision errors with dust-levels of collateral
 
         // Add the total value of each token together and divide by the totalSupply to get the unit price
         uint256 preq = _add(
             _mul(p0, _mul(r0, TO_18_DEC_0)),
             _mul(p1, _mul(r1, TO_18_DEC_1))
-        ) / ERC20Like(src).totalSupply();
+        ) / totalSupply;
         require(preq < 2 ** 128, "GUniLPOracle/quote-overflow");
         quote = uint128(preq);  // WAD
     }
