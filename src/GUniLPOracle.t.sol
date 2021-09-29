@@ -601,7 +601,7 @@ contract GUniLPOracleTest is DSTest {
     // https://forum.makerdao.com/t/guni-dai-usdc-collateral-onboarding-oracle-assessment-mip10c3-sp41/10268
     uint256 constant MAX_PRICE_STABLE = 10014 * 10**14; // 1.0014 USD
     uint256 constant MIN_PRICE_STABLE = 9994  * 10**14; // 0.9994 USD
-    uint256 constant DEC0_DAI  = 18;
+    uint256 constant DEC0_DAI  = MAX_DEC;               // 18
     uint256 constant DEC1_USDC = 6;
 
     function test_sqrt_price_ratio_dai_usdc_fuzz(uint256 p0, uint256 p1) public {
@@ -624,7 +624,7 @@ contract GUniLPOracleTest is DSTest {
     uint256 constant MIN_PRICE_ETH  = WAD;               // 1 USD
     uint256 constant MAX_PRICE_USDC = MAX_PRICE_STABLE;  // 1.0014 USD
     uint256 constant MIN_PRICE_USDC = MIN_PRICE_STABLE;  // 0.9994 USD
-    uint256 constant DEC0_ETH = 18;
+    uint256 constant DEC0_ETH = MAX_DEC;                 // 18
 
     function test_sqrt_price_ratio_eth_usdc_fuzz(uint256 p0, uint256 p1) public {
         p0 %= MAX_PRICE_ETH;
