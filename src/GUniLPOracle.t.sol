@@ -177,6 +177,9 @@ contract GUniLPOracleTest is DSTest {
     function wdiv(uint x, uint y) internal pure returns (uint z) {
         z = add(mul(x, WAD), y / 2) / y;
     }
+    function toUint160(uint256 x) internal pure returns (uint160 z) {
+        require((z = uint160(x)) == x, "GUniLPOracle/uint160-overflow");
+    }
 
     // babylonian method (https://en.wikipedia.org/wiki/Methods_of_computing_square_roots#Babylonian_method)
     function sqrt1(uint y) internal pure returns (uint z) {
@@ -600,12 +603,20 @@ contract GUniLPOracleTest is DSTest {
         assertGt(uint256(liquidityEnd), uint256(liquidityOrig));
     }
 
-    function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
-        uint256 MAX_PRICE = 1e12 * WAD;     // Max underlying asset Oracle price supported is $1 Trillion USD
-        uint256 MAX_DEC = 18;
+    // --- Fuzz ---
+    uint256 constant MAX_PRICE = 1e12 * WAD;   // Max underlying asset Oracle price supported is $1 Trillion USD
+    uint256 constant MIN_PRICE = 10**9;        // $0.000000001 USD
+    uint256 constant MAX_DEC = 18;
 
+    // https://github.com/Uniswap/uniswap-v3-core/blob/main/contracts/libraries/TickMath.sol
+    uint160 constant MIN_SQRT_RATIO = 4295128739;
+    uint160 constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
+
+    function test_sqrt_price_overflow_fuzz(uint256 p0, uint256 dec0, uint256 p1, uint256 dec1) public {
         p0 %= MAX_PRICE;
-        p1%= MAX_PRICE;
+        if (p0 < MIN_PRICE) p0 = MIN_PRICE;
+        p1 %= MAX_PRICE;
+        if (p1 < MIN_PRICE) p1 = MIN_PRICE;
         dec0 %= MAX_DEC;
         dec1 %= MAX_DEC;
 
@@ -616,4 +627,47 @@ contract GUniLPOracleTest is DSTest {
         assertLt(sqrtPriceX96, 1 << 160);
     }
 
+    // --- GUNI DAI-USDC ---
+    // https://forum.makerdao.com/t/guni-dai-usdc-collateral-onboarding-oracle-assessment-mip10c3-sp41/10268
+    uint256 constant MAX_PRICE_STABLE = 10014 * 10**14; // 1.0014 USD
+    uint256 constant MIN_PRICE_STABLE = 9994  * 10**14; // 0.9994 USD
+    uint256 constant DEC0_DAI  = MAX_DEC;               // 18
+    uint256 constant DEC1_USDC = 6;
+
+    function test_sqrt_price_ratio_dai_usdc_fuzz(uint256 p0, uint256 p1) public {
+        p0 %= MAX_PRICE_STABLE;
+        if (p0 < MIN_PRICE_STABLE) p0 = MIN_PRICE_STABLE;
+        p1 %= MAX_PRICE_STABLE;
+        if (p1 < MIN_PRICE_STABLE) p1 = MIN_PRICE_STABLE;
+
+        uint256 UNIT_0 = 10 ** DEC0_DAI;
+        uint256 UNIT_1 = 10 ** DEC1_USDC;
+
+        uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
+
+        // second inequality must be < because the price can never reach the price at the max tick
+        assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
+    }
+
+    // --- GUNI ETH-USDC ---
+    uint256 constant MAX_PRICE_ETH  = MAX_PRICE;         // 1 Trilion USD
+    uint256 constant MIN_PRICE_ETH  = WAD;               // 1 USD
+    uint256 constant MAX_PRICE_USDC = MAX_PRICE_STABLE;  // 1.0014 USD
+    uint256 constant MIN_PRICE_USDC = MIN_PRICE_STABLE;  // 0.9994 USD
+    uint256 constant DEC0_ETH = MAX_DEC;                 // 18
+
+    function test_sqrt_price_ratio_eth_usdc_fuzz(uint256 p0, uint256 p1) public {
+        p0 %= MAX_PRICE_ETH;
+        if (p0 < MIN_PRICE_ETH) p0 = MIN_PRICE_ETH;
+        p1 %= MAX_PRICE_USDC;
+        if (p1 < MIN_PRICE_USDC) p1 = MIN_PRICE_USDC;
+
+        uint256 UNIT_0 = 10 ** DEC0_ETH;
+        uint256 UNIT_1 = 10 ** DEC1_USDC;
+
+        uint160 sqrtPriceX96 = toUint160(sqrt2(mul(mul(p0, UNIT_1), (1 << 96)) / (mul(p1, UNIT_0))) << 48);
+
+        // second inequality must be < because the price can never reach the price at the max tick
+        assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
+    }
 }

@@ -6,8 +6,12 @@ set -e
 export DAPP_BUILD_OPTIMIZE=1
 export DAPP_BUILD_OPTIMIZE_RUNS=200
 
-if [[ -z "$1" ]]; then
-  dapp --use solc:0.6.12 test --rpc-url="$ETH_RPC_URL" -v
+if [[ -z "$1" && -z "$2" ]]; then
+    dapp --use solc:0.6.12 test --rpc-url="$ETH_RPC_URL" --fuzz-runs 1 -vv
+elif [[ -z "$2" ]]; then
+    dapp --use solc:0.6.12 test --rpc-url="$ETH_RPC_URL" --match "$1" --fuzz-runs 1 -vv
+elif [[ -z "$1" ]]; then
+    dapp --use solc:0.6.12 test --rpc-url="$ETH_RPC_URL" --fuzz-runs "$2" -vv
 else
-  dapp --use solc:0.6.12 test --rpc-url="$ETH_RPC_URL" --match "$1" -vv
+    dapp --use solc:0.6.12 test --rpc-url="$ETH_RPC_URL" --match "$1" --fuzz-runs "$2" -vv
 fi
