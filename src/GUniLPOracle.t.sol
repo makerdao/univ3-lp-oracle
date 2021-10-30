@@ -12,13 +12,6 @@ interface Hevm {
     function load(address, bytes32 slot) external returns (bytes32);
 }
 
-interface OSMLike {
-    function bud(address) external returns (uint);
-    function peek() external returns (bytes32, bool);
-    function kiss(address) external;
-    function poke() external;
-}
-
 interface UniPoolLike {
     function slot0() external view returns (uint160, int24, uint16, uint16, uint16, uint8, bool);
     function swap(address, bool, int256, uint160, bytes calldata) external;
@@ -51,6 +44,8 @@ interface GUNILike {
 
 interface OracleLike {
     function read() external view returns (uint256);
+    function bud(address) external returns (uint);
+    function kiss(address) external;
 }
 
 contract GUniLPOracleTest is DSTest {
@@ -231,7 +226,7 @@ contract GUniLPOracleTest is DSTest {
     address constant ETH_USDC_UNI_POOL  = 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640;
     address constant USDC_ORACLE        = 0x77b68899b99b686F415d074278a9a16b336085A0;
     address constant DAI_ORACLE         = 0x47c3dC029825Da43BE595E21fffD0b66FfcB7F6e;
-    address constant ETH_ORACLE         = 0x81FE72B5A8d1A857d176C3E7d5Bd2679A9B85763;
+    address constant ETH_ORACLE         = 0x64DE91F5A373Cd4c28de3600cB34C7C6cE410C85;
     address constant DAI                = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address constant USDC               = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address constant ETH                = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -261,8 +256,8 @@ contract GUniLPOracleTest is DSTest {
             ETH_ORACLE)
         );
         giveAuthAccess(ETH_ORACLE, address(this));
-        OSMLike(ETH_ORACLE).kiss(address(ethUsdcLPOracle));
-        OSMLike(ETH_ORACLE).kiss(address(this));
+        OracleLike(ETH_ORACLE).kiss(address(ethUsdcLPOracle));
+        OracleLike(ETH_ORACLE).kiss(address(this));
         ethUsdcLPOracle.kiss(address(this));
         assertEq(GUNILike(ETH_USDC_GUNI_POOL).pool(), ETH_USDC_UNI_POOL);
     }
@@ -413,7 +408,6 @@ contract GUniLPOracleTest is DSTest {
 
     function test_calc_sqrts_match_eth() public {
         hevm.warp(now + 1 hours);
-        OSMLike(ETH_ORACLE).poke();
         ethUsdcLPOracle.poke();
 
         // Both these oracles should be hard coded to 1
@@ -430,7 +424,6 @@ contract GUniLPOracleTest is DSTest {
 
     function test_calc_sqrt_price_eth() public {
         hevm.warp(now + 1 hours);
-        OSMLike(ETH_ORACLE).poke();
         ethUsdcLPOracle.poke();
 
         // Both these oracles should be hard coded to 1
