@@ -2,6 +2,8 @@
 
 Contains vendor-specific implementations for Uniswap V3 oracles. The specific functions being called to determine underlying balances will vary between LP implementations, but the underlying logic should be roughly equivalent between all vendors.
 
+Underlying price oracles `orb0` and `orb1` should refer to either a Medianizer, DSValue or some other `read()` compliant oracle. OSMs should not be used to the double delay.
+
 ## General Price Calculation
 
 We derive the sqrtPriceX96 via Maker's own oracles to prevent price manipulation in the pool:

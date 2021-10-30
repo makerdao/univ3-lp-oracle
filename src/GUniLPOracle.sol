@@ -133,8 +133,6 @@ contract GUniLPOracle {
     address public            orb1;  // Oracle for token1, ideally a Medianizer
 
     // --- Math ---
-    uint256 constant WAD = 10 ** 18;
-
     function _add(uint256 _x, uint256 _y) internal pure returns (uint256 z) {
         require((z = _x + _y) >= _x, "GUniLPOracle/add-overflow");
     }
