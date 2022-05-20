@@ -179,6 +179,7 @@ contract GUniLPOracle {
     event Step(uint256 hop);
     event Stop();
     event Start();
+    event Void();
     event Value(uint128 curVal, uint128 nxtVal);
     event Link(uint256 id, address orb);
     event Kiss(address a);
@@ -206,15 +207,20 @@ contract GUniLPOracle {
 
     function stop() external auth {
         stopped = 1;
-        delete cur;
-        delete nxt;
-        zph = 0;
         emit Stop();
     }
 
     function start() external auth {
         stopped = 0;
         emit Start();
+    }
+
+    function void() external auth {
+        stopped = 1;
+        delete cur;
+        delete nxt;
+        zph = 0;
+        emit Void();
     }
 
     function step(uint256 _hop) external auth {
