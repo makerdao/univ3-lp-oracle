@@ -693,6 +693,7 @@ contract GUniLPOracleTest is DSTest {
         assertTrue(nxtValPrev > 0);
         assertTrue(nxtHasPrev);
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
         daiUsdcLPOracle.stop();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
         (bytes32 curVal, bool curHas) = daiUsdcLPOracle.peek();
@@ -701,6 +702,7 @@ contract GUniLPOracleTest is DSTest {
         assertTrue(curHas);
         assertEq(uint256(nxtValPrev), uint256(nxtVal));
         assertTrue(nxtHas);
+
         daiUsdcLPOracle.start();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
         (curVal, curHas) = daiUsdcLPOracle.peek();
