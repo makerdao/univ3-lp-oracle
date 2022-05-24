@@ -77,6 +77,10 @@ contract GUniLPOracleTest is DSTest {
     }
 
     function assertNotEqApprox(uint256 _a, uint256 _b, uint256 _tolerance) internal {
+        assertNotEqApprox(_a, _b, _tolerance, "");
+    }
+
+    function assertNotEqApprox(uint256 _a, uint256 _b, uint256 _tolerance, string memory err) internal {
         uint256 a = _a;
         uint256 b = _b;
         if (a < b) {
@@ -88,6 +92,7 @@ contract GUniLPOracleTest is DSTest {
             emit log_bytes32("Error: `uint' should not match");
             emit log_named_uint("  Expected", _b);
             emit log_named_uint("    Actual", _a);
+            emit log_named_string(   "Error", err);
             fail();
         }
     }
