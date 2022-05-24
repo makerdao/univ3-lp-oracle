@@ -752,10 +752,12 @@ contract GUniLPOracleTest is DSTest {
 
         assertTrue(resVal > 0);
         assertTrue(has);                                            // Verify Oracle has valid value
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
 
         daiUsdcLPOracle.void();
-        // No time change between void and start
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
 
+        // No time change between void and start
         daiUsdcLPOracle.start();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
 
@@ -778,13 +780,15 @@ contract GUniLPOracleTest is DSTest {
 
         assertTrue(resVal > 0);
         assertTrue(has);                                            // Verify Oracle has valid value
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
 
         daiUsdcLPOracle.stop();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
+
         daiUsdcLPOracle.void();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
-        // No time change between void and start
 
+        // No time change between void and start
         daiUsdcLPOracle.start();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
 
