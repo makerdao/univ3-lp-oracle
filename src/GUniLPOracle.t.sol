@@ -723,8 +723,8 @@ contract GUniLPOracleTest is DSTest {
 
         assertTrue(resVal > 0);
         assertTrue(has);                                            // Verify Oracle has valid value
-
         assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
         daiUsdcLPOracle.void();
         assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
 
