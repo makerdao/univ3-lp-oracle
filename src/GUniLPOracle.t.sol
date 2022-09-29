@@ -56,6 +56,10 @@ interface OracleLike {
 contract GUniLPOracleTest is DSTest {
 
     function assertEqApprox(uint256 _a, uint256 _b, uint256 _tolerance) internal {
+        assertEqApprox(_a, _b, _tolerance, "");
+    }
+
+    function assertEqApprox(uint256 _a, uint256 _b, uint256 _tolerance, string memory err) internal {
         uint256 a = _a;
         uint256 b = _b;
         if (a < b) {
@@ -67,11 +71,16 @@ contract GUniLPOracleTest is DSTest {
             emit log_bytes32("Error: Wrong `uint' value");
             emit log_named_uint("  Expected", _b);
             emit log_named_uint("    Actual", _a);
+            emit log_named_string(   "Error", err);
             fail();
         }
     }
 
     function assertNotEqApprox(uint256 _a, uint256 _b, uint256 _tolerance) internal {
+        assertNotEqApprox(_a, _b, _tolerance, "");
+    }
+
+    function assertNotEqApprox(uint256 _a, uint256 _b, uint256 _tolerance, string memory err) internal {
         uint256 a = _a;
         uint256 b = _b;
         if (a < b) {
@@ -83,6 +92,7 @@ contract GUniLPOracleTest is DSTest {
             emit log_bytes32("Error: `uint' should not match");
             emit log_named_uint("  Expected", _b);
             emit log_named_uint("    Actual", _a);
+            emit log_named_string(   "Error", err);
             fail();
         }
     }
@@ -669,5 +679,125 @@ contract GUniLPOracleTest is DSTest {
 
         // second inequality must be < because the price can never reach the price at the max tick
         assertTrue(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO);
+    }
+
+    function test_stop_start() public {
+        daiUsdcLPOracle.poke();
+        hevm.warp(block.timestamp + 1 hours);
+        daiUsdcLPOracle.poke();
+        daiUsdcLPOracle.kiss(address(this));
+        (bytes32 curValPrev, bool curHasPrev) = daiUsdcLPOracle.peek();
+        (bytes32 nxtValPrev, bool nxtHasPrev) = daiUsdcLPOracle.peep();
+        assertTrue(curValPrev > 0);
+        assertTrue(curHasPrev);
+        assertTrue(nxtValPrev > 0);
+        assertTrue(nxtHasPrev);
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
+        daiUsdcLPOracle.stop();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
+        (bytes32 curVal, bool curHas) = daiUsdcLPOracle.peek();
+        (bytes32 nxtVal, bool nxtHas) = daiUsdcLPOracle.peep();
+        assertEq(uint256(curValPrev), uint256(curVal));
+        assertTrue(curHas);
+        assertEq(uint256(nxtValPrev), uint256(nxtVal));
+        assertTrue(nxtHas);
+
+        daiUsdcLPOracle.start();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+        (curVal, curHas) = daiUsdcLPOracle.peek();
+        (nxtVal, nxtHas) = daiUsdcLPOracle.peep();
+        assertEq(uint256(curValPrev), uint256(curVal));
+        assertTrue(curHas);
+        assertEq(uint256(nxtValPrev), uint256(nxtVal));
+        assertTrue(nxtHas);
+    }
+
+    function test_void() public {
+        daiUsdcLPOracle.poke();                                     // Poke DAI-ETH LP Oracle
+        hevm.warp(now + 1 hours);
+        daiUsdcLPOracle.poke();
+        daiUsdcLPOracle.kiss(address(this));                        // Whitelist caller on DAI-ETH LP Oracle
+        (bytes32 val, bool has) = daiUsdcLPOracle.peep();           // Query queued price of DAI-ETH LP Oracle
+        uint256 resVal = uint256(val);                              // Cast queued price as uint256
+
+        assertTrue(resVal > 0);
+        assertTrue(has);                                            // Verify Oracle has valid value
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
+        daiUsdcLPOracle.void();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
+
+        (val, has) = daiUsdcLPOracle.peep();                        // Query queued price of DAI-ETH LP Oracle
+        resVal = uint256(val);
+        assertEq(resVal, 0);
+        assertTrue(!has);
+
+        (val, has) = daiUsdcLPOracle.peek();
+        resVal = uint256(val);
+        assertTrue(!has);
+        assertEq(resVal, 0);
+
+        assertEq(uint256(daiUsdcLPOracle.zph()), 0);
+        assertEq(daiUsdcLPOracle.zzz(), 0);
+    }
+
+    function test_void_start_poke() public {
+        daiUsdcLPOracle.poke();                                     // Poke DAI-ETH LP Oracle
+        hevm.warp(now + 1 hours);
+        daiUsdcLPOracle.poke();
+        daiUsdcLPOracle.kiss(address(this));                        // Whitelist caller on DAI-ETH LP Oracle
+        (bytes32 val, bool has) = daiUsdcLPOracle.peep();           // Query queued price of DAI-ETH LP Oracle
+        uint256 resVal = uint256(val);                              // Cast queued price as uint256
+
+        assertTrue(resVal > 0);
+        assertTrue(has);                                            // Verify Oracle has valid value
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
+        daiUsdcLPOracle.void();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
+
+        // No time change between void and start
+        daiUsdcLPOracle.start();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
+        daiUsdcLPOracle.poke();
+
+        (val, has) = daiUsdcLPOracle.peep();                        // Query queued price of DAI-ETH LP Oracle
+        resVal = uint256(val);                                      // Cast queued price as uint256
+
+        assertTrue(resVal > 0);
+        assertTrue(has);                                            // Verify Oracle has valid value
+    }
+
+    function test_stop_void_start_poke() public {
+        daiUsdcLPOracle.poke();                                     // Poke DAI-ETH LP Oracle
+        hevm.warp(now + 1 hours);
+        daiUsdcLPOracle.poke();
+        daiUsdcLPOracle.kiss(address(this));                        // Whitelist caller on DAI-ETH LP Oracle
+        (bytes32 val, bool has) = daiUsdcLPOracle.peep();           // Query queued price of DAI-ETH LP Oracle
+        uint256 resVal = uint256(val);                              // Cast queued price as uint256
+
+        assertTrue(resVal > 0);
+        assertTrue(has);                                            // Verify Oracle has valid value
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
+        daiUsdcLPOracle.stop();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
+
+        daiUsdcLPOracle.void();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 1);
+
+        // No time change between void and start
+        daiUsdcLPOracle.start();
+        assertEq(uint256(daiUsdcLPOracle.stopped()), 0);
+
+        daiUsdcLPOracle.poke();
+
+        (val, has) = daiUsdcLPOracle.peep();                        // Query queued price of DAI-ETH LP Oracle
+        resVal = uint256(val);                                      // Cast queued price as uint256
+
+        assertTrue(resVal > 0);
+        assertTrue(has);                                            // Verify Oracle has valid value
     }
 }
